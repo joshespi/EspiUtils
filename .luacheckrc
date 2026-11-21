@@ -5,10 +5,10 @@ codes = true
 read_globals = {
     -- namespaces and enums
     "C_ActionBar", "C_AddOns", "C_Container", "C_EquipmentSet", "C_Item", "C_Secrets",
-    "C_Spell", "C_Timer", "C_TooltipInfo", "C_UnitAuras", "Constants", "Enum", "Settings",
+    "C_QuestLog", "C_Spell", "C_Timer", "C_TooltipInfo", "C_UnitAuras", "Constants", "Enum", "Settings",
     "bit",
     -- functions
-    "ClearCursor", "CopyTable", "CreateFrame", "CreateMacro", "DeleteMacro", "EditMacro",
+    "AddQuestWatch", "RemoveQuestWatch", "GetNumQuestWatches", "GetQuestIndexForWatch", "GetQuestLogTitle", "ClearCursor", "CopyTable", "CreateFrame", "CreateMacro", "DeleteMacro", "EditMacro",
     "GetBuildInfo", "GetContainerNumSlots", "GetCursorInfo", "GetItemFamily", "GetMacroBody",
     "GetMacroIndexByName", "GetNumMacros", "GetServerTime", "GetTime", "GetUIPanel",
     "HideUIPanel", "InCombatLockdown", "InterfaceOptionsFrame_OpenToCategory",

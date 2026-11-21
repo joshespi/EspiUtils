@@ -209,6 +209,7 @@ local function PrintHelp()
     Print("/espiutils <posture|water> [on | off | status | interval <minutes> | test]")
     Print("/espiutils move [reset] - move and resize the reminders (shared by all characters)")
     Print("/espiutils bags [sort | stop | preview | on | off | pin | log | debug | probe]")
+    Print("/espiutils quests [on | off | status] - sort the quest tracker by level")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
 end
@@ -275,6 +276,8 @@ SlashCmdList.ESPIUTILS = function(message)
 
     if command == "food" then
         HandleFood(action, value)
+    elseif command == "quests" or command == "quest" then
+        EspiUtils.HandleQuestSortCommand(action)
     elseif command == "rebuff" then
         EspiUtils.HandleRebuffCommand(action, value)
     elseif command == "move" then
@@ -365,6 +368,7 @@ events:SetScript("OnEvent", function(self, event, ...)
 
         InitModule("bags", EspiUtils.InitBagRules, account)
         InitModule("keep", EspiUtils.InitKeepBagsOpen, settings)
+        xpcall(EspiUtils.InitializeQuestSort, geterrorhandler(), settings)
         InitModule("mouseover", EspiUtils.InitMouseover, account)
         xpcall(EspiUtils.InitializeOptions, geterrorhandler())
 

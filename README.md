@@ -53,6 +53,10 @@ Bags only close when you close them. When the game closes your bags (vendor, mai
 
 `/espiutils keep [on | off | status | blocked | blocked clear]` (no argument toggles). `/kbo` and `/keepbags` still work. `blocked` lists actions the game blocked; include it in bug reports.
 
+### Quest Tracker
+
+Sorts the quest tracker by quest level, lowest first (off by default). Tick it on the Quest Tracker page or use `/espiutils quests [on | off | status]` (no argument toggles). It reorders your tracked quests, so turning it off leaves the current order in place.
+
 ### Mouseover Macros
 
 Keeps a character macro named `MO <spell>` for each spell in a per-class list:

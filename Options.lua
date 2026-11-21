@@ -145,7 +145,7 @@ local MOVE_BUTTON = {
 local function BuildMain()
     local panel = NewPage("main", "Espi Utils")
     AddNote(panel, "Small quality-of-life tools. Pick a page on the left. Everything is also available from chat: /espiutils with no arguments lists the commands.")
-    AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Mouseover Macros")
+    AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Quest Tracker\n- Mouseover Macros")
     return panel
 end
 
@@ -266,6 +266,16 @@ local function BuildKeep()
     AddDefaults(panel, function() keep.SetEnabled(true) end)
 end
 
+local function BuildQuests()
+    local panel = NewPage("quests", "Quest Tracker", true)
+    AddNote(panel, "Sorts the quest tracker by quest level, lowest first. Off leaves the tracker in the game's order.")
+    local qs = EspiUtils.QuestSort
+    AddCheck(panel, "Sort tracked quests by level", nil,
+        function() return qs.GetSettings().enabled end,
+        qs.SetEnabled)
+    AddDefaults(panel, function() qs.SetEnabled(false) end)
+end
+
 local function BuildMouseover()
     local panel = NewPage("mouseover", "Mouseover Macros", true)
     AddNote(panel, "Keeps a mouseover cast macro (named \"MO <spell>\") for each spell in this class's list. The list is shared by your characters of the same class; macros are per character. Changes made in combat apply when it ends.")
@@ -351,11 +361,12 @@ function EspiUtils.InitializeOptions()
     BuildTimed()
     BuildBags()
     BuildKeep()
+    BuildQuests()
     BuildMouseover()
     Register(main)
 end
 
--- key: "main", "food", "rebuff", "timed", "bags", "keep" or "mouseover"
+-- key: "main", "food", "rebuff", "timed", "bags", "keep", "quests" or "mouseover"
 function EspiUtils.OpenOptions(key)
     local panel = pages[key or "main"] or pages.main
     if not panel then return end

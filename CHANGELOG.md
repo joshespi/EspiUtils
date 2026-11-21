@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.2.0
+
+- New Quest Tracker option: sorts the quest tracker by quest level, lowest first. Off by default; tick it on the Quest Tracker page or use `/espiutils quests`.
+
 ## 1.1.0
 
 - New class rebuff reminder: warns when a class buff is missing or about to run out. Tracks Fortitude, Arcane Intellect and your armor, Mark of the Wild and Thorns, Battle Shout and Inner Fire. Paladins are warned when a blessing they cast is running low. Settings are on the new Class Rebuff page or under `/espiutils rebuff`.
