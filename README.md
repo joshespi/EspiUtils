@@ -68,6 +68,8 @@ Keeps a character macro named `MO <spell>` for each spell in a per-class list:
 
 `/espiutils mouseover [add | harm | del | list | sync] <spells>`. `add` casts on a friendly mouseover, `harm` on a hostile one, both falling back to your target. Shift-click spells in the spellbook to insert them. The list is shared by all characters of the same class; macros are per character. Macro names are cut to 16 characters, so two spells that end up with the same name can't both be added. `/momacro` still works.
 
+On the settings page, type spells and press Enter (friendly) or use the Add buttons; each listed spell has an X to remove it and a button to switch it between friendly and hostile.
+
 ## Install
 
 Copy the `EspiUtils` folder into `_retail_/Interface/AddOns/` (or the Forever equivalent).

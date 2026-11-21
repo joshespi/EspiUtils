@@ -287,46 +287,86 @@ local function BuildMouseover()
     box:SetPoint("TOPLEFT", 22, panel.y)
     box:SetAutoFocus(false)
     box:SetMaxLetters(200)
-    Tooltip(box, "Spell names separated by commas. Shift-click spells in the spellbook to insert them.")
     panel.y = panel.y - 30
 
-    local listText
-    local function refreshList()
-        local spells = mo.GetList()
-        if not spells or #spells == 0 then
-            listText:SetText("List is empty.")
-            return
-        end
-        local lines = {}
-        for _, e in ipairs(spells) do
-            lines[#lines + 1] = ("%s (%s)"):format(e.name, mo.LABEL[e.kind] or "?")
-        end
-        listText:SetText(table.concat(lines, "\n"))
-    end
-
-    local function act(fn)
+    local refreshList
+    local function act(cmd)
         return function()
-            local text = strtrim(box:GetText() or "")
+            local text = strtrim(box:GetText())
             if text ~= "" then
-                fn(text)
-                box:SetText("")
-                box:ClearFocus()
-                refreshList()
+                if mo.Add(cmd, text) then
+                    box:SetText("")
+                    box:ClearFocus()
+                    refreshList()
+                end
             end
         end
     end
+    local addFriendly = act("add")
+    box:SetScript("OnEnterPressed", addFriendly)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+    AddNote(panel, "Type spell names (comma separated) or shift-click them in the spellbook, then press Enter (adds as friendly) or pick a button.")
     AddButtons(panel, {
         { label = "Add friendly", width = 110, tip = "Mouseover friendly, falls back to your target.",
-          onClick = act(function(t) mo.Add("add", t) end) },
+          onClick = addFriendly },
         { label = "Add hostile", width = 110, tip = "Mouseover hostile, falls back to your target.",
-          onClick = act(function(t) mo.Add("harm", t) end) },
-        { label = "Remove", width = 90, onClick = act(function(t) mo.Remove(t) end) },
+          onClick = act("harm") },
         { label = "Sync now", width = 90, onClick = mo.Sync },
     })
 
     AddHeader(panel, "Spells for this class")
-    listText = AddNote(panel, "")
-    listText:SetJustifyV("TOP")
+    local listTop = panel.y
+    local emptyText = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    emptyText:SetPoint("TOPLEFT", 16, listTop)
+    emptyText:SetText("No spells yet. Add one above.")
+
+    local ROW_HEIGHT = 24
+    local rows = {}
+    local function makeRow(i)
+        local row = CreateFrame("Frame", nil, panel)
+        row:SetSize(PAGE_WIDTH, ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", 16, listTop - (i - 1) * ROW_HEIGHT)
+
+        row.remove = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.remove:SetSize(24, 22)
+        row.remove:SetPoint("LEFT", 0, 0)
+        row.remove:SetText("X")
+        row.remove:SetScript("OnClick", function()
+            mo.Remove(row.entry.name)
+            refreshList()
+        end)
+        Tooltip(row.remove, "Remove this spell and delete its macro.")
+
+        row.kind = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.kind:SetSize(80, 22)
+        row.kind:SetPoint("LEFT", row.remove, "RIGHT", 4, 0)
+        row.kind:SetScript("OnClick", function()
+            mo.SetKind(row.entry.name, row.entry.kind == "help" and "harm" or "help")
+            refreshList()
+        end)
+        Tooltip(row.kind, "Click to switch between friendly and hostile.")
+
+        row.label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        row.label:SetPoint("LEFT", row.kind, "RIGHT", 8, 0)
+        rows[i] = row
+        return row
+    end
+
+    refreshList = function()
+        local spells = mo.GetList() or {}
+        emptyText:SetShown(#spells == 0)
+        for i, e in ipairs(spells) do
+            local row = rows[i] or makeRow(i)
+            row.entry = e
+            row.label:SetText(e.name)
+            row.kind:SetText(mo.LABEL[e.kind] or "?")
+            row:Show()
+        end
+        for i = #spells + 1, #rows do
+            rows[i]:Hide()
+        end
+    end
     panel.refreshers[#panel.refreshers + 1] = refreshList
 end
 

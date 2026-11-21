@@ -135,6 +135,15 @@ local function add(cmd, list)
     elseif changed then
         requestSync()
     end
+    return changed
+end
+
+local function setKind(spell, kind)
+    local _, e = find(spell)
+    if e and COND[kind] then
+        e.kind = kind
+        requestSync()
+    end
 end
 
 local function remove(list)
@@ -200,7 +209,8 @@ end
 
 -- Used by the options screen. Each returns nothing; they report through chat.
 EspiUtils.Mouseover = {
-    Add = function(cmd, text) if spells then add(cmd, text) end end,
+    Add = function(cmd, text) return spells and add(cmd, text) or false end, -- true if the list changed
+    SetKind = function(spell, kind) if spells then setKind(spell, kind) end end,
     Remove = function(text) if spells then remove(text) end end,
     Sync = function() if spells then requestSync() end end,
     GetList = function() return spells end,

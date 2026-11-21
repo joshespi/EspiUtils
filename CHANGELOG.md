@@ -2,6 +2,7 @@
 
 ## 1.2.0
 
+- The Mouseover Macros page lists each spell as a row with an X to remove it and a button to switch friendly/hostile. Enter in the box adds a spell as friendly.
 - New Quest Tracker option: sorts the quest tracker by quest level, lowest first. Off by default; tick it on the Quest Tracker page or use `/espiutils quests`.
 
 ## 1.1.0
