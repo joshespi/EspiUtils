@@ -24,19 +24,20 @@ local definitions = {
 local reminders = {}
 
 local function ValidMinutes(m)
-    return type(m) == "number" and m >= 1 and m <= MAX_MINUTES and m % 1 == 0
+    return EspiUtils.IsWholeInRange(m, 1, MAX_MINUTES)
 end
 
-local function CanShow()
-    return not InCombatLockdown() and not UnitIsDeadOrGhost("player")
-end
+local CanShow = EspiUtils.CanShowReminder
 
+-- While the tiles are unlocked for moving they stay up until locked.
 local function Dismiss(reminder)
     if reminder.hideTimer then
         reminder.hideTimer:Cancel()
         reminder.hideTimer = nil
     end
-    reminder.frame:Hide()
+    if not EspiUtils.Tiles.IsUnlocked() then
+        reminder.frame:Hide()
+    end
 end
 
 local function Show(reminder)
@@ -44,26 +45,29 @@ local function Show(reminder)
     reminder.frame:Show()
     reminder.hideTimer = C_Timer.NewTimer(DISPLAY_SECONDS, function()
         reminder.hideTimer = nil
-        reminder.frame:Hide()
+        Dismiss(reminder)
     end)
 end
 
--- lastShown is saved so that short play sessions still get their reminders.
-local function Fire(reminder)
-    reminder.settings.lastShown = GetServerTime()
-    Show(reminder)
-end
+local Fire
 
 local function Schedule(reminder, delay)
     reminder.intervalTimer = C_Timer.NewTimer(delay or reminder.settings.minutes * 60, function()
         reminder.intervalTimer = nil
         if CanShow() then
             Fire(reminder)
-            Schedule(reminder)
         else
             reminder.pending = true
         end
     end)
+end
+
+-- Shows the reminder and starts the next interval. lastShown is saved so that
+-- short play sessions still get their reminders.
+function Fire(reminder)
+    reminder.settings.lastShown = GetServerTime()
+    Show(reminder)
+    Schedule(reminder)
 end
 
 -- resume keeps the saved clock (login); otherwise the interval starts over.
@@ -99,11 +103,14 @@ function EspiUtils.InitializeTimedReminders(settings)
             saved.minutes = definition.minutes
         end
         local frame, detail = EspiUtils.CreateReminder(definition.title, definition.icon)
-        frame:SetPoint("TOP", UIParent, "TOP", 0, definition.y)
         detail:SetText(definition.detail)
 
         local reminder = { frame = frame, settings = saved, title = definition.title }
         reminders[definition.command] = reminder
+        EspiUtils.RegisterTile(definition.command, frame, detail, { "TOP", "TOP", 0, definition.y }, function()
+            detail:SetText(definition.detail)
+            Dismiss(reminder)
+        end)
         Restart(reminder, true)
     end
 end
@@ -117,7 +124,6 @@ function EspiUtils.RefreshTimedReminders(event)
         elseif reminder.pending then
             reminder.pending = false
             Fire(reminder)
-            Schedule(reminder)
         end
     end
 end
@@ -163,6 +169,7 @@ function EspiUtils.ResetTimedReminders()
             reminder.settings.enabled = true
             reminder.settings.minutes = definition.minutes
             Restart(reminder)
+            EspiUtils.Tiles.Reset(definition.command)
         end
     end
 end

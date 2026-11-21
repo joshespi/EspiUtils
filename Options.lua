@@ -10,6 +10,10 @@ local ordered = {}
 
 -- Builders -------------------------------------------------------------------
 
+local function RefreshPanel(panel)
+    for _, refresh in ipairs(panel.refreshers) do refresh() end
+end
+
 local function NewPage(key, title, parent)
     local panel = CreateFrame("Frame")
     panel.name = title
@@ -18,9 +22,7 @@ local function NewPage(key, title, parent)
     heading:SetPoint("TOPLEFT", 16, -16)
     heading:SetText(title)
     panel.y = -52
-    panel:SetScript("OnShow", function(self)
-        for _, refresh in ipairs(self.refreshers) do refresh() end
-    end)
+    panel:SetScript("OnShow", RefreshPanel)
     pages[key] = panel
     if parent then
         ordered[#ordered + 1] = panel
@@ -87,7 +89,8 @@ local function AddNumber(panel, label, tip, get, set)
         if value then set(value) end
         refresh()
     end
-    box:SetScript("OnEnterPressed", function(self) commit(self) self:ClearFocus() end)
+    -- ClearFocus fires OnEditFocusLost, which commits.
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     box:SetScript("OnEscapePressed", function(self) refresh() self:ClearFocus() end)
     box:SetScript("OnEditFocusLost", commit)
     Tooltip(box, tip)
@@ -115,7 +118,7 @@ end
 local function AddDefaults(panel, reset)
     local function run()
         reset()
-        for _, refresh in ipairs(panel.refreshers) do refresh() end
+        RefreshPanel(panel)
     end
     panel.OnDefault = run
     AddButtons(panel, { { label = "Reset to defaults", width = 140, onClick = run } })
@@ -125,6 +128,17 @@ local function ModuleOff(panel, key)
     local legacy = EspiUtils.legacy[key]
     AddNote(panel, ("|cffff6060Off:|r the old %s addon is enabled. Disable it in the AddOns list and /reload to use this."):format(legacy.addon))
 end
+
+local MOVE_BUTTON = {
+    label = "Move reminders",
+    tip = "Show every reminder to drag and resize (scroll over one). Right-click one to lock. Positions are shared by all characters.",
+    onClick = function()
+        -- The Settings window would cover the reminders, so close it to drag.
+        if EspiUtils.ToggleTileMove() and SettingsPanel and SettingsPanel:IsShown() then
+            HideUIPanel(SettingsPanel)
+        end
+    end,
+}
 
 -- Pages ----------------------------------------------------------------------
 
@@ -141,24 +155,20 @@ local function BuildFood()
     local food = EspiUtils.Food
     AddCheck(panel, "Enable food reminder", nil,
         function() return food.GetSettings().enabled end,
-        function(on) food.SetEnabled(on) end)
+        food.SetEnabled)
     AddCheck(panel, "Hide in rested areas", "Hide the reminder in cities and inns.",
         function() return food.GetSettings().hideResting end,
-        function(on) food.SetHideResting(on) end)
-    AddNumber(panel, "Expiry warning (seconds, 0 = missing only)", "Whole number from 0 to 300.",
+        food.SetHideResting)
+    AddNumber(panel, "Expiry warning (seconds, 0 = missing only)",
+        ("Whole number from 0 to %d."):format(food.MAX_LEAD),
         function() return food.GetSettings().lead end,
-        function(v) return food.SetLead(v) end)
+        food.SetLead)
     AddButtons(panel, {
-        { label = "Move reminder", tip = "Toggle drag mode. Drag the reminder, then right-click it to lock.",
-          onClick = function()
-              -- The Settings window would cover the reminder, so close it to drag.
-              if food.ToggleMove() and SettingsPanel and SettingsPanel:IsShown() then
-                  HideUIPanel(SettingsPanel)
-              end
-          end },
-        { label = "Reset position", onClick = function() food.ResetPosition() end },
+        MOVE_BUTTON,
+        { label = "Reset position", tip = "Default position and size for the Well Fed reminder.",
+          onClick = food.ResetPosition },
     })
-    AddDefaults(panel, function() food.ResetDefaults() end)
+    AddDefaults(panel, food.ResetDefaults)
 end
 
 local function BuildTimed()
@@ -182,7 +192,17 @@ local function BuildTimed()
             end },
         })
     end
-    AddDefaults(panel, function() EspiUtils.ResetTimedReminders() end)
+    AddHeader(panel, "Position")
+    AddButtons(panel, {
+        MOVE_BUTTON,
+        { label = "Reset positions", tip = "Default position and size for the posture and water reminders.",
+          onClick = function()
+              for _, definition in ipairs(EspiUtils.GetTimedReminders()) do
+                  EspiUtils.Tiles.Reset(definition.command)
+              end
+          end },
+    })
+    AddDefaults(panel, EspiUtils.ResetTimedReminders)
 end
 
 local function BuildBags()
@@ -190,23 +210,22 @@ local function BuildBags()
     AddNote(panel, "A custom Clean Up: camping items and tools first, equipment-set gear together, tradeable gear in the middle, conjured items, junk and bound gear at the bottom. Shift-click Clean Up for Blizzard's sort.")
     if not EspiUtils.ready.bags then return ModuleOff(panel, "bags") end
     local bags = EspiUtils.Bags
-    AddCheck(panel, "Clean Up button uses this sort", "Off: the button runs Blizzard's sort.",
-        function() return bags.GetSettings().enabled end,
-        function(on) bags.GetSettings().enabled = on end)
-    AddCheck(panel, "Deposit reagents when the bank is open", "Clean Up first sends crafting reagents to the bank, then sorts the rest.",
-        function() return bags.GetSettings().depositReagents end,
-        function(on) bags.GetSettings().depositReagents = on end)
-    AddCheck(panel, "Pin conjured, junk and bound gear to the last slots", "Off: they are packed right after BoE gear.",
-        function() return bags.GetSettings().pinBound end,
-        function(on) bags.GetSettings().pinBound = on end)
-    AddCheck(panel, "Debug output", "Per-pass detail in chat and the log.",
-        function() return bags.GetSettings().debug end,
-        function(on) bags.GetSettings().debug = on end)
+    for _, c in ipairs({
+        { "enabled", "Clean Up button uses this sort", "Off: the button runs Blizzard's sort." },
+        { "depositReagents", "Deposit reagents when the bank is open", "Clean Up first sends crafting reagents to the bank, then sorts the rest." },
+        { "pinBound", "Pin conjured, junk and bound gear to the last slots", "Off: they are packed right after BoE gear." },
+        { "debug", "Debug output", "Per-pass detail in chat and the log." },
+    }) do
+        local key = c[1]
+        AddCheck(panel, c[2], c[3],
+            function() return bags.GetSettings()[key] end,
+            function(on) bags.GetSettings()[key] = on end)
+    end
     AddButtons(panel, {
-        { label = "Sort now", tip = "Open your bags first so their layout is used.", onClick = function() bags.Sort() end },
-        { label = "Preview", tip = "Counts per section in chat; moves nothing.", onClick = function() bags.Preview() end },
+        { label = "Sort now", tip = "Open your bags first so their layout is used.", onClick = bags.Sort },
+        { label = "Preview", tip = "Counts per section in chat; moves nothing.", onClick = bags.Preview },
     })
-    AddDefaults(panel, function() bags.ResetDefaults() end)
+    AddDefaults(panel, bags.ResetDefaults)
 end
 
 local function BuildKeep()
@@ -216,7 +235,7 @@ local function BuildKeep()
     local keep = EspiUtils.Keep
     AddCheck(panel, "Keep bags open", "Turning it on keeps whatever bags are open right now.",
         function() return keep.GetSettings().enabled end,
-        function(on) keep.SetEnabled(on) end)
+        keep.SetEnabled)
     AddDefaults(panel, function() keep.SetEnabled(true) end)
 end
 
@@ -265,14 +284,11 @@ local function BuildMouseover()
         { label = "Add hostile", width = 110, tip = "Mouseover hostile, falls back to your target.",
           onClick = act(function(t) mo.Add("harm", t) end) },
         { label = "Remove", width = 90, onClick = act(function(t) mo.Remove(t) end) },
-        { label = "Sync now", width = 90, onClick = function() mo.Sync() end },
+        { label = "Sync now", width = 90, onClick = mo.Sync },
     })
 
     AddHeader(panel, "Spells for this class")
-    listText = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    listText:SetPoint("TOPLEFT", 16, panel.y)
-    listText:SetWidth(PAGE_WIDTH)
-    listText:SetJustifyH("LEFT")
+    listText = AddNote(panel, "")
     listText:SetJustifyV("TOP")
     panel.refreshers[#panel.refreshers + 1] = refreshList
 end

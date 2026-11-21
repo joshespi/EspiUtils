@@ -1,44 +1,36 @@
 local addonName, EspiUtils = ...
-local DEFAULT_LEAD = 60
+local MAX_LEAD = 300
+local FOOD_DEFAULTS = { enabled = true, hideResting = false, lead = 60 }
 local Print = EspiUtils.Print
 
 local events = CreateFrame("Frame")
 local reminder, detail = EspiUtils.CreateReminder("Well Fed", "Interface\\Icons\\INV_Misc_Fork&Knife")
-reminder:SetMovable(true)
+local Tiles = EspiUtils.Tiles
 
 local settings
 local timer
-local moving = false
 local auraPending = false
-
-local function AnchorReminder()
-    reminder:ClearAllPoints()
-    reminder:SetPoint("CENTER", UIParent, "CENTER", settings.x or 0, settings.y or 155)
-end
 
 local function ShowReminder(message)
     detail:SetText(message)
     reminder:Show()
 end
 
-local UpdateReminder
-
-local function OnTimer()
-    timer = nil
-    UpdateReminder()
-end
-
-function UpdateReminder()
+local function CancelTimer()
     if timer then
         timer:Cancel()
         timer = nil
     end
-    if InCombatLockdown() or UnitIsDeadOrGhost("player") then
+end
+
+local function UpdateReminder()
+    CancelTimer()
+    if not EspiUtils.CanShowReminder() then
         reminder:Hide()
         return
     end
-    if moving then
-        ShowReminder("Drag to move. Right-click to lock.")
+    if Tiles.IsUnlocked() then
+        ShowReminder(Tiles.MOVE_HINT)
         return
     end
     if not settings.enabled or (settings.hideResting and IsResting()) then
@@ -49,55 +41,32 @@ function UpdateReminder()
     local state, remaining = EspiUtils.GetFoodState()
     if state == "missing" then
         ShowReminder("Food buff missing")
-    elseif remaining then
-        local delay = remaining
-        if settings.lead > 0 then
-            if remaining <= settings.lead then
-                local seconds = math.ceil(remaining)
-                ShowReminder(("Expires in %d:%02d"):format(math.floor(seconds / 60), seconds % 60))
-                delay = remaining - seconds + 1
-            else
-                reminder:Hide()
-                delay = remaining - settings.lead
-            end
-        else
-            reminder:Hide()
-        end
-        timer = C_Timer.NewTimer(math.max(0.05, delay), OnTimer)
+        return
+    end
+    if not remaining then
+        reminder:Hide()
+        return
+    end
+    -- remaining is always > 0 here, so a lead of 0 never shows the countdown.
+    local delay
+    if remaining <= settings.lead then
+        local seconds = math.ceil(remaining)
+        ShowReminder(("Expires in %d:%02d"):format(math.floor(seconds / 60), seconds % 60))
+        delay = remaining - seconds + 1
     else
         reminder:Hide()
+        delay = remaining - settings.lead
     end
+    timer = C_Timer.NewTimer(math.max(0.05, delay), UpdateReminder)
 end
 
-reminder:RegisterForDrag("LeftButton")
-reminder:EnableMouse(false)
-reminder:SetScript("OnDragStart", function(self)
-    if moving then
-        self:StartMoving()
-    end
-end)
-reminder:SetScript("OnDragStop", function(self)
-    self:StopMovingOrSizing()
-    local x, y = self:GetCenter()
-    local scale = self:GetEffectiveScale() / UIParent:GetEffectiveScale()
-    local parentX, parentY = UIParent:GetCenter()
-    settings.x, settings.y = x * scale - parentX, y * scale - parentY
-    AnchorReminder()
-end)
-reminder:SetScript("OnMouseUp", function(_, button)
-    if moving and button == "RightButton" then
-        EspiUtils.Food.ToggleMove()
-        Print("Reminder locked.")
-    end
-end)
-reminder:SetScript("OnHide", function(self)
-    self:StopMovingOrSizing()
+EspiUtils.RegisterTile("food", reminder, detail, { "CENTER", "CENTER", 0, 155 }, function()
+    if settings then UpdateReminder() else reminder:Hide() end
 end)
 
 -- Food reminder API, shared by the slash command and the options screen.
 EspiUtils.Food = {
     GetSettings = function() return settings end,
-    IsMoving = function() return moving end,
     SetEnabled = function(enabled)
         settings.enabled = enabled and true or false
         UpdateReminder()
@@ -106,52 +75,59 @@ EspiUtils.Food = {
         settings.hideResting = hide and true or false
         UpdateReminder()
     end,
-    -- true when seconds is a whole number from 0 to 300
+    MAX_LEAD = MAX_LEAD,
+    -- true when seconds is a whole number from 0 to MAX_LEAD
     SetLead = function(seconds)
-        if not seconds or seconds < 0 or seconds > 300 or seconds % 1 ~= 0 then
+        if not EspiUtils.IsWholeInRange(seconds, 0, MAX_LEAD) then
             return false
         end
         settings.lead = seconds
         UpdateReminder()
         return true
     end,
-    ToggleMove = function()
-        if not moving and InCombatLockdown() then
-            return false, "combat"
-        end
-        moving = not moving
-        reminder:EnableMouse(moving)
-        UpdateReminder()
-        return moving
-    end,
     ResetPosition = function()
-        settings.x, settings.y = nil, nil
-        AnchorReminder()
-        UpdateReminder()
+        Tiles.Reset("food")
     end,
     ResetDefaults = function()
-        settings.enabled = true
-        settings.hideResting = false
-        moving = false
-        reminder:EnableMouse(false)
-        settings.lead = DEFAULT_LEAD
-        settings.x, settings.y = nil, nil
-        AnchorReminder()
+        EspiUtils.ApplyDefaults(settings, FOOD_DEFAULTS, true)
+        Tiles.Lock()
+        EspiUtils.Food.ResetPosition()
         UpdateReminder()
     end,
 }
 
 -- Modules ---------------------------------------------------------------------
 
+local function HasEntries(t)
+    return next(t) ~= nil
+end
+
+local function HasSpells(t)
+    for _, list in pairs(type(t.spells) == "table" and t.spells or {}) do
+        if type(list) == "table" and #list > 0 then return true end
+    end
+    return false
+end
+
 -- Standalone addons this one replaced. Running both would double-hook the same
 -- buttons and bag frames, so a module stays off while its old addon is enabled.
+-- handler: the module's command handler (the TOC loads the modules before this file).
+-- db: the old addon's saved variable; hasData: whether a module table holds real settings.
 local LEGACY = {
-    bags = { addon = "EspiBagRules", title = "Bag Rules" },
-    keep = { addon = "KeepBagsOpen", title = "Keep Bags Open" },
-    mouseover = { addon = "MouseoverMacros", title = "Mouseover Macros" },
+    bags = { addon = "EspiBagRules", title = "Bag Rules", handler = EspiUtils.HandleBagsCommand,
+        db = "EspiBagRulesDB", hasData = HasEntries },
+    keep = { addon = "KeepBagsOpen", title = "Keep Bags Open", handler = EspiUtils.HandleKeepBagsCommand,
+        db = "KeepBagsOpenDB", hasData = HasEntries },
+    mouseover = { addon = "MouseoverMacros", title = "Mouseover Macros", handler = EspiUtils.HandleMouseoverCommand,
+        db = "MouseoverMacrosDB", hasData = HasSpells },
 }
 EspiUtils.legacy = LEGACY
 EspiUtils.ready = {}
+
+local function PrintLegacyOff(key)
+    local legacy = LEGACY[key]
+    Print(("%s is off: disable the old %s addon and /reload."):format(legacy.title, legacy.addon))
+end
 
 local function LegacyEnabled(name)
     local ok, enabled = pcall(function()
@@ -167,50 +143,57 @@ local function LegacyEnabled(name)
     return ok and enabled
 end
 
-local function InitModule(key, init, ...)
+-- One-time copy of an old addon's saved variable into store[key]. WoW only loads
+-- that variable while the old addon is loaded, or from this addon's own saved
+-- file (the TOC lists it too) once both were loaded in an earlier session. So it
+-- is retried on every load until there is something to copy or the module
+-- already has its own settings.
+local function Migrate(key, store)
+    store.migrated = type(store.migrated) == "table" and store.migrated or {}
     local legacy = LEGACY[key]
-    if LegacyEnabled(legacy.addon) then
-        Print(("%s is off: disable the old %s addon."):format(legacy.title, legacy.addon))
+    local current = store[key]
+    if type(current) ~= "table" then
+        current = nil
+    end
+    if not store.migrated[key] then
+        local old = _G[legacy.db]
+        if not (current and legacy.hasData(current)) and type(old) == "table" and next(old) ~= nil then
+            current = CopyTable(old)
+            Print(("%s: settings copied from %s."):format(legacy.title, legacy.addon))
+        end
+        if current and legacy.hasData(current) then
+            store.migrated[key] = true
+        end
+    end
+    store[key] = current or {}
+    return store[key]
+end
+
+-- store[key] holds the module's settings. Nothing is created or copied while the
+-- old addon is enabled: its saved data is only complete once it has run.
+local function InitModule(key, init, store)
+    if LegacyEnabled(LEGACY[key].addon) then
+        PrintLegacyOff(key)
         return
     end
+    local moduleDB = Migrate(key, store)
     -- A failing module must not stop the rest of the addon from loading.
-    local ok = xpcall(init, geterrorhandler(), ...)
+    local ok = xpcall(init, geterrorhandler(), moduleDB)
     if not ok then
-        Print(("%s failed to start. See the error above."):format(legacy.title))
+        Print(("%s failed to start. See the error above."):format(LEGACY[key].title))
         return
     end
     EspiUtils.ready[key] = true
 end
 
--- One-time copy of the old addons' saved variables (the TOC still loads them).
-local function Migrate(account, character)
-    if EspiBagRulesDB and not account.bags then
-        account.bags = CopyTable(EspiBagRulesDB)
-    end
-    if MouseoverMacrosDB and not account.mouseover then
-        account.mouseover = CopyTable(MouseoverMacrosDB)
-    end
-    if KeepBagsOpenDB and not character.keep then
-        character.keep = CopyTable(KeepBagsOpenDB)
-    end
-end
-
 -- Commands ----------------------------------------------------------------------
-
--- Handlers are looked up by name at call time because the modules load after this file.
-local MODULE_HANDLERS = {
-    bags = "HandleBagsCommand",
-    keep = "HandleKeepBagsCommand",
-    mouseover = "HandleMouseoverCommand",
-}
 
 local function RunModule(key, message)
     if not EspiUtils.ready[key] then
-        local legacy = LEGACY[key]
-        Print(("%s is off: disable the old %s addon and /reload."):format(legacy.title, legacy.addon))
+        PrintLegacyOff(key)
         return
     end
-    EspiUtils[MODULE_HANDLERS[key]](message)
+    LEGACY[key].handler(message)
 end
 
 local MODULE_ALIASES = {
@@ -223,9 +206,34 @@ local function PrintHelp()
     Print("/espiutils (or /espi) options - open the settings")
     Print("/espiutils food [on | off | status | lead <seconds> | move | reset]")
     Print("/espiutils <posture|water> [on | off | status | interval <minutes> | test]")
+    Print("/espiutils move [reset] - move and resize the reminders (shared by all characters)")
     Print("/espiutils bags [sort | stop | preview | on | off | pin | log | debug | probe]")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
+end
+
+-- Prints the outcome; returns whether the tiles are now unlocked.
+function EspiUtils.ToggleTileMove()
+    local unlocked, refused = Tiles.Toggle()
+    if refused then
+        Print(refused)
+    elseif unlocked then
+        Print("Drag the reminders to move them, scroll over one to resize. Right-click one or use /espiutils move to lock.")
+    else
+        Print("Reminders locked.")
+    end
+    return unlocked
+end
+
+local function HandleMove(action)
+    if action == "" then
+        EspiUtils.ToggleTileMove()
+    elseif action == "reset" then
+        Tiles.Reset()
+        Print("Reminder positions and sizes reset.")
+    else
+        Print("Use /espiutils move [reset].")
+    end
 end
 
 local function HandleFood(action, value)
@@ -236,17 +244,12 @@ local function HandleFood(action, value)
     elseif action == "lead" then
         local seconds = tonumber(value)
         if not food.SetLead(seconds) then
-            Print("Enter a whole number from 0 to 300. Use 0 for missing-buff reminders only.")
+            Print(("Enter a whole number from 0 to %d. Use 0 for missing-buff reminders only."):format(MAX_LEAD))
             return
         end
         Print(seconds == 0 and "Missing-buff reminders only." or ("Expiry warning set to %d seconds."):format(seconds))
     elseif action == "move" then
-        local nowMoving, reason = food.ToggleMove()
-        if reason == "combat" then
-            Print("Can't move the reminder in combat.")
-            return
-        end
-        Print(nowMoving and "Drag the reminder. Use /espiutils food move to finish." or "Reminder locked.")
+        EspiUtils.ToggleTileMove()
     elseif action == "reset" then
         food.ResetPosition()
         Print("Reminder position reset.")
@@ -271,6 +274,8 @@ SlashCmdList.ESPIUTILS = function(message)
 
     if command == "food" then
         HandleFood(action, value)
+    elseif command == "move" then
+        HandleMove(action)
     elseif command == "options" or command == "config" or command == "settings" then
         EspiUtils.OpenOptions()
     elseif MODULE_ALIASES[command] then
@@ -289,11 +294,6 @@ end
 SLASH_ESPIUTILS_KEEP1 = "/keepbags"
 SLASH_ESPIUTILS_KEEP2 = "/kbo"
 SlashCmdList.ESPIUTILS_KEEP = function(m)
-    m = strtrim(m or ""):lower()
-    if m == "config" or m == "options" then
-        EspiUtils.OpenOptions("keep")
-        return
-    end
     RunModule("keep", m)
 end
 SLASH_ESPIUTILS_MO1 = "/momacro"
@@ -320,6 +320,11 @@ end
 
 -- Events ------------------------------------------------------------------------
 
+local function OnAurasSettled()
+    auraPending = false
+    UpdateReminder()
+end
+
 events:RegisterEvent("ADDON_LOADED")
 events:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
@@ -331,27 +336,25 @@ events:SetScript("OnEvent", function(self, event, ...)
         EspiUtilsAccountDB = EspiUtilsAccountDB or {}
         settings = EspiUtilsDB
         local account = EspiUtilsAccountDB
-        Migrate(account, settings)
 
-        if settings.enabled == nil then
-            settings.enabled = true
-        end
+        EspiUtils.ApplyDefaults(settings, FOOD_DEFAULTS)
         -- SavedVariables can be hand-edited or corrupt: fall back to defaults.
-        if type(settings.lead) ~= "number" or settings.lead < 0 or settings.lead > 300 then
-            settings.lead = DEFAULT_LEAD
+        if not EspiUtils.IsWholeInRange(settings.lead, 0, MAX_LEAD) then
+            settings.lead = FOOD_DEFAULTS.lead
         end
-        if type(settings.x) ~= "number" or type(settings.y) ~= "number" then
-            settings.x, settings.y = nil, nil
+        -- Tile positions used to be per character (Well Fed only): the first
+        -- character to log in after the update carries its spot over.
+        account.tiles = type(account.tiles) == "table" and account.tiles or {}
+        if not account.tiles.food and type(settings.x) == "number" and type(settings.y) == "number" then
+            account.tiles.food = { x = settings.x, y = settings.y }
         end
-        AnchorReminder()
+        settings.x, settings.y = nil, nil
+        EspiUtils.InitTiles(account.tiles)
         EspiUtils.InitializeTimedReminders(settings)
 
-        account.bags = account.bags or {}
-        account.mouseover = account.mouseover or {}
-        settings.keep = settings.keep or {}
-        InitModule("bags", EspiUtils.InitBagRules, account.bags)
-        InitModule("keep", EspiUtils.InitKeepBagsOpen, settings.keep)
-        InitModule("mouseover", EspiUtils.InitMouseover, account.mouseover)
+        InitModule("bags", EspiUtils.InitBagRules, account)
+        InitModule("keep", EspiUtils.InitKeepBagsOpen, settings)
+        InitModule("mouseover", EspiUtils.InitMouseover, account)
         xpcall(EspiUtils.InitializeOptions, geterrorhandler())
 
         self:RegisterUnitEvent("UNIT_AURA", "player")
@@ -375,26 +378,29 @@ events:SetScript("OnEvent", function(self, event, ...)
         reminder:Hide()
         C_Timer.After(0, UpdateReminder)
     elseif event == "SPELL_DATA_LOAD_RESULT" then
+        -- Only the Well Fed name is needed, and only once.
         if ... == EspiUtils.wellFedSpellID then
+            self:UnregisterEvent("SPELL_DATA_LOAD_RESULT")
             UpdateReminder()
         end
-    else
-        if event == "PLAYER_REGEN_DISABLED" and moving then
-            moving = false
-            reminder:EnableMouse(false)
+    elseif event == "UNIT_AURA" then
+        -- Aura events arrive in bursts; update once after they settle.
+        if not auraPending then
+            auraPending = true
+            C_Timer.After(0.2, OnAurasSettled)
         end
-        if event == "UNIT_AURA" then
-            -- Aura events arrive in bursts; update once after they settle.
-            if not auraPending then
-                auraPending = true
-                C_Timer.After(0.2, function()
-                    auraPending = false
-                    UpdateReminder()
-                end)
-            end
-            return
+    else
+        if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_DEAD" then
+            Tiles.Lock()
         end
         EspiUtils.RefreshTimedReminders(event)
-        UpdateReminder()
+        if event == "PLAYER_REGEN_DISABLED" then
+            -- InCombatLockdown() is still false during this event, so
+            -- UpdateReminder would show the reminder as combat starts.
+            CancelTimer()
+            reminder:Hide()
+        else
+            UpdateReminder()
+        end
     end
 end)
