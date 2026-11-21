@@ -9,7 +9,7 @@ local definitions = {
         title = "Posture check",
         detail = "Sit tall and relax your shoulders.",
         icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
-        minutes = 30,
+        minutes = 40,
         y = -42,
     },
     {
@@ -17,7 +17,7 @@ local definitions = {
         title = "Drink water",
         detail = "Take a sip of water.",
         icon = "Interface\\Icons\\INV_Drink_07",
-        minutes = 30,
+        minutes = 25,
         y = -102,
     },
 }
