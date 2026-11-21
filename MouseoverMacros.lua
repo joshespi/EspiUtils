@@ -9,13 +9,14 @@ local COND = {
 }
 local LABEL = { help = "friendly", harm = "hostile" }
 local KIND = { add = "help", harm = "harm" }
+local MACRO_CONSTS = Constants and Constants.MacroConsts or {}
+local MAX_ACCOUNT_MACROS = MACRO_CONSTS.MAX_ACCOUNT_MACROS or 120
+local MAX_CHARACTER_MACROS = MACRO_CONSTS.MAX_CHARACTER_MACROS or 18
 
 local spells -- this class's list, set at login
 local pending = false
 
-local function say(msg)
-    EspiUtils.Print("|cff33ccffMouseover:|r " .. msg)
-end
+local say = EspiUtils.Printer("Mouseover", "33ccff")
 
 -- Macro names cap at 16 bytes; back off so a multi-byte character isn't cut in half.
 local function macroName(spell)
@@ -51,8 +52,7 @@ end
 -- Character macro index for name, 0 if none, nil if an account macro holds the name.
 local function macroIndex(name)
     local idx = GetMacroIndexByName(name)
-    local maxAccount = Constants and Constants.MacroConsts and Constants.MacroConsts.MAX_ACCOUNT_MACROS or 120
-    if idx > 0 and idx <= maxAccount then
+    if idx > 0 and idx <= MAX_ACCOUNT_MACROS then
         return nil
     end
     return idx
@@ -67,14 +67,13 @@ local function sync()
 
     local made, updated = 0, 0
     local _, numChar = GetNumMacros()
-    local maxChar = Constants and Constants.MacroConsts and Constants.MacroConsts.MAX_CHARACTER_MACROS or 18
     for _, e in ipairs(spells) do
         local name, body = macroName(e.name), macroBody(e.name, e.kind)
         local idx = macroIndex(name)
         if not idx then
             say("account macro already named " .. name .. ", skipped: " .. e.name)
         elseif idx == 0 then
-            if numChar >= maxChar then
+            if numChar >= MAX_CHARACTER_MACROS then
                 say("character macro slots full, skipped: " .. e.name)
             else
                 CreateMacro(name, "INV_Misc_QuestionMark", body, true)
@@ -144,7 +143,7 @@ local function remove(list)
         return
     end
     for piece in list:gmatch("[^,]+") do
-        local spell = parseSpell(piece)
+        local spell = parseSpell(piece) -- nil for a blank piece ("a,,b")
         local i = spell and find(spell)
         if i then
             local e = table.remove(spells, i)
@@ -153,8 +152,8 @@ local function remove(list)
                 DeleteMacro(idx)
             end
             say("removed " .. e.name)
-        else
-            say("not in list: " .. (spell or piece))
+        elseif spell then
+            say("not in list: " .. spell)
         end
     end
     sync() -- restores any macro shared with a removed entry (lists saved before the clash check)
