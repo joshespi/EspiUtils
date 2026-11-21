@@ -1,4 +1,4 @@
-local ADDON, EspiUtils = ...
+local _, EspiUtils = ...
 
 local STEP_INTERVAL = 0.05 -- seconds between move-engine steps
 local LOCK_TIMEOUT = 3     -- seconds to wait for item locks to clear
@@ -16,9 +16,7 @@ local defaults = {
 
 local db
 
-local function Print(msg)
-    EspiUtils.Print("|cff66ccffBags:|r " .. msg)
-end
+local Print = EspiUtils.Printer("Bags", "66ccff")
 
 -- run history in EspiUtilsAccountDB.bags.log; WoW writes it to disk on /reload or logout
 local function Log(msg)
@@ -120,8 +118,8 @@ end
 
 -- gear you can still trade or send to an alt sorts as BoE: unbound, Warbound, or Warbound
 -- until equipped (loc is the item's bag slot)
-local function IsTradeable(info, loc)
-    return not info.isBound or WARBOUND[select(14, C_Item.GetItemInfo(info.itemID))]
+local function IsTradeable(info, static, loc)
+    return not info.isBound or WARBOUND[static.bindType]
         or (C_Item.IsBoundToAccountUntilEquip and C_Item.IsBoundToAccountUntilEquip(loc))
 end
 
@@ -188,8 +186,11 @@ end
 
 local loc = ItemLocation and ItemLocation:CreateEmpty() -- reused: Classify never keeps it
 
+local GetItemFamily = C_Item.GetItemFamily or GetItemFamily
+
 -- Static per-item data, looked up once per itemID instead of on every pass.
-local staticInfo = {} -- itemID -> { equipLoc, classID, subClassID, reagent }
+-- itemID -> { equipLoc, classID, subClassID, reagent, bindType, maxStack, family }
+local staticInfo = {}
 local function StaticInfo(itemID)
     local s = staticInfo[itemID]
     if not s then
@@ -197,12 +198,16 @@ local function StaticInfo(itemID)
         s = { equipLoc = equipLoc, classID = classID, subClassID = subClassID }
         staticInfo[itemID] = s
     end
+    -- the fields below are only cached once the item data has loaded
     if s.reagent == nil then
-        local name, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, isReagent = C_Item.GetItemInfo(itemID)
-        if name then -- only cache once the item data has loaded
+        local name, _, _, _, _, _, _, _, _, _, _, _, _, bindType, _, _, isReagent = C_Item.GetItemInfo(itemID)
+        if name then
             s.reagent = isReagent == true
+            s.bindType = bindType
         end
     end
+    s.maxStack = s.maxStack or C_Item.GetItemMaxStackSizeByID(itemID)
+    s.family = s.family or GetItemFamily(itemID)
     return s
 end
 
@@ -226,6 +231,7 @@ local function Classify(bag, slot, info, sets, general)
         slotOrder = gear and SLOT_ORDER[equipLoc] or 99,
         setRank = 0,
         reagent = static.reagent == true, -- isCraftingReagent
+        maxStack = static.maxStack, family = static.family or 0,
     }
 
     if CAMPING_IDS[itemID] then
@@ -249,7 +255,7 @@ local function Classify(bag, slot, info, sets, general)
             rec.setRank = SetRank(setList or "", sets)
         elseif quality == Enum.ItemQuality.Heirloom then
             rec.section = HEIRLOOM
-        elseif IsTradeable(info, loc) then
+        elseif IsTradeable(info, static, loc) then
             rec.section = BOE
         else
             rec.section = BOUND
@@ -490,7 +496,7 @@ local function MergeRegion(region, recs)
     for i = 1, region.n do
         local r = recs[i]
         if r and not r.locked then
-            local max = C_Item.GetItemMaxStackSizeByID(r.itemID)
+            local max = r.maxStack
             if max and r.count < max then
                 local g = groups[r.link]
                 if not g then
@@ -560,8 +566,7 @@ local function FitsBag(region, r)
     -- this pass only fills special bags, it never empties them
     if r.section == CAMPING then return false end
     if region.family ~= 0 then
-        local fam = (C_Item.GetItemFamily or GetItemFamily)(r.itemID) or 0
-        return bit.band(fam, region.family) ~= 0
+        return bit.band(r.family, region.family) ~= 0
     end
     return region.reagent and r.reagent
 end
@@ -569,26 +574,24 @@ end
 -- items in the general bags move into free slots of a reagent or profession bag they fit (like
 -- Blizzard's sort); the merge and order passes then work inside that bag. Each source slot is
 -- tried once per sort, so an item the bag refuses can't loop. Returns the moves issued.
-local function FillSpecialBags(run_, snaps)
-    local gi
-    for i, region in ipairs(run_.regions) do
-        if region.general then gi = i end
-    end
-    if not gi then return 0 end
-    local general, gsnap = run_.regions[gi], snaps[gi]
+local function FillSpecialBags(snaps)
+    -- BuildRegions puts the general region first when there is one
+    local general, gsnap = run.regions[1], snaps[1]
+    if not general.general then return 0 end
 
     local moves = 0
-    for ri, special in ipairs(run_.regions) do
-        if not special.general then
-            local rsnap, free = snaps[ri], 1
-            for i = 1, general.n do
-                local r = gsnap[i]
-                local id = r and (general.slots[i].bag .. ":" .. general.slots[i].slot .. ":" .. r.itemID)
-                if r and not r.locked and not run_.fillTried[id] and FitsBag(special, r) then
+    for ri = 2, #run.regions do
+        local special, rsnap, free = run.regions[ri], snaps[ri], 1
+        for i = 1, general.n do
+            local r = gsnap[i]
+            if r and not r.locked and FitsBag(special, r) then
+                local s = general.slots[i]
+                local id = s.bag .. ":" .. s.slot .. ":" .. r.itemID
+                if not run.fillTried[id] then
                     while free <= special.n and rsnap[free] do free = free + 1 end
                     if free > special.n then break end
-                    run_.fillTried[id] = true
-                    local ok, err = Move(general.slots[i], special.slots[free])
+                    run.fillTried[id] = true
+                    local ok, err = Move(s, special.slots[free])
                     if not ok then return moves, err end
                     moves = moves + 1
                     free = free + 1
@@ -629,7 +632,7 @@ local function Step()
         return
     end
 
-    local filled, ferr = FillSpecialBags(run, snaps)
+    local filled, ferr = FillSpecialBags(snaps)
     if ferr then return Stop(ferr) end
     if filled > 0 then -- let the moves land, then re-snapshot
         run.moves = run.moves + filled
@@ -658,11 +661,19 @@ local function Tick()
     end
 end
 
+-- Classify needs an ItemLocation; without it every pass would error.
+local function Supported()
+    if loc then return true end
+    Say("this client has no ItemLocation API; see /espiutils bags probe")
+    return false
+end
+
 local function Sort()
     if run then
         Say("already sorting")
         return
     end
+    if not Supported() then return end
     if InCombatLockdown() then
         Say("can't sort in combat")
         return
@@ -685,8 +696,10 @@ local function Sort()
     local labels = {}
     for _, region in ipairs(regions) do labels[#labels + 1] = region.label end
     Log("sort: " .. table.concat(labels, ", "))
+    -- Sort refuses closed combined bags, so the only fallback left is separate
+    -- bags, where slot order is the normal layout: no need to say so every time.
     if regions[1].fallback then
-        Print("sorting by slot order (" .. regions[1].fallback:gsub("^fallback: ", "") .. ")")
+        Debug("sorting by slot order (" .. regions[1].fallback:gsub("^fallback: ", "") .. ")")
     end
     if db.debug then
         Print("sorting... /espiutils bags stop to cancel")
@@ -702,6 +715,7 @@ end
 -- Preview -------------------------------------------------------------------
 
 local function Preview()
+    if not Supported() then return end
     local region = BuildRegions()[1] -- the general region always comes first
     if not (region and region.general) then
         Print("no general bags to sort")
@@ -788,15 +802,29 @@ local function DepositReagents()
     for bag = Enum.BagIndex.Backpack, Enum.BagIndex.ReagentBag do
         for slot = 1, C_Container.GetContainerNumSlots(bag) do
             local info = C_Container.GetContainerItemInfo(bag, slot)
-            if info and not info.isLocked then
-                if StaticInfo(info.itemID).reagent then
-                    C_Container.UseContainerItem(bag, slot, nil, Enum.BankType and Enum.BankType.Character)
-                    sent = sent + 1
-                end
+            if info and not info.isLocked and StaticInfo(info.itemID).reagent then
+                C_Container.UseContainerItem(bag, slot, nil, Enum.BankType and Enum.BankType.Character)
+                sent = sent + 1
             end
         end
     end
     return sent
+end
+
+-- Sorts once the deposits have landed (BAG_UPDATE_DELAYED), or after 2s if no event comes.
+local depositWait
+local function FinishDeposit()
+    if not depositWait then return end
+    depositWait = nil
+    frame:UnregisterEvent("BAG_UPDATE_DELAYED")
+    Sort()
+end
+
+local function SortAfterDeposit()
+    if depositWait then return end
+    depositWait = true
+    frame:RegisterEvent("BAG_UPDATE_DELAYED")
+    C_Timer.After(2, FinishDeposit)
 end
 
 -- Button hook ---------------------------------------------------------------
@@ -816,7 +844,7 @@ local function HookButton()
         PlaySound(SOUNDKIT.UI_BAG_SORTING_01)
         if db.depositReagents and bankOpen and not run and not InCombatLockdown() and not GetCursorInfo()
             and DepositReagents() > 0 then
-            C_Timer.After(0.6, Sort) -- let the deposits land before sorting what's left
+            SortAfterDeposit()
         else
             Sort()
         end
@@ -834,6 +862,8 @@ end
 frame:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_LOGIN" then
         HookButton()
+    elseif event == "BAG_UPDATE_DELAYED" then
+        FinishDeposit()
     elseif event == "PLAYER_REGEN_DISABLED" then
         Stop("combat started")
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" or event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
@@ -845,9 +875,7 @@ end)
 
 function EspiUtils.InitBagRules(settings)
     db = settings
-    for k, v in pairs(defaults) do
-        if db[k] == nil then db[k] = v end
-    end
+    EspiUtils.ApplyDefaults(db, defaults)
     db.log = db.log or {}
     frame:RegisterEvent("PLAYER_LOGIN")
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -858,11 +886,9 @@ end
 -- used by the options screen
 EspiUtils.Bags = {
     GetSettings = function() return db end,
-    Sort = function() Sort() end,
-    Preview = function() Preview() end,
-    ResetDefaults = function()
-        for k, v in pairs(defaults) do db[k] = v end
-    end,
+    Sort = Sort,
+    Preview = Preview,
+    ResetDefaults = function() EspiUtils.ApplyDefaults(db, defaults, true) end,
 }
 
 -- Commands ------------------------------------------------------------------
