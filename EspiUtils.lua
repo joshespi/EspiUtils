@@ -1,6 +1,6 @@
 local addonName, EspiUtils = ...
 local MAX_LEAD = 300
-local FOOD_DEFAULTS = { enabled = true, hideResting = false, lead = 60 }
+local FOOD_DEFAULTS = { enabled = true, hideResting = true, lead = 60 }
 local Print = EspiUtils.Print
 
 local events = CreateFrame("Frame")
@@ -337,6 +337,11 @@ events:SetScript("OnEvent", function(self, event, ...)
         settings = EspiUtilsDB
         local account = EspiUtilsAccountDB
 
+        -- hideResting now defaults to on; carry existing characters over once.
+        if not settings.hideRestingMigrated then
+            settings.hideRestingMigrated = true
+            settings.hideResting = true
+        end
         EspiUtils.ApplyDefaults(settings, FOOD_DEFAULTS)
         -- SavedVariables can be hand-edited or corrupt: fall back to defaults.
         if not EspiUtils.IsWholeInRange(settings.lead, 0, MAX_LEAD) then

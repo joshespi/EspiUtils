@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.0.1
+
+- The Well Fed reminder is now hidden in rested areas (cities and inns) by default, including for existing characters. Untick "Hide in rested areas" on the Food Reminder page to show it there again.
+
 ## 1.0.0
 
 - All reminder tiles (Well Fed, posture, water) can be moved and resized with `/espiutils move` or the Move reminders button: drag to move, scroll to resize, right-click to lock. Positions and sizes are saved account-wide, so every character shares them. The first character to log in carries its Well Fed position over.
