@@ -1,8 +1,8 @@
 ﻿## Interface: 120105, 120100, 120007, 16001
 ## Title: Espi Utils
-## Notes: Well Fed, posture and hydration reminders, custom bag sorting, keep bags open, and mouseover macros. /espiutils options
+## Notes: Well Fed, class rebuff, posture and hydration reminders, custom bag sorting, keep bags open, and mouseover macros. /espiutils options
 ## Author: Espi
-## Version: 1.0.2
+## Version: 1.1.0
 ## Category: Utility
 ## IconTexture: Interface\Icons\INV_Misc_Bag_08
 ## X-Curse-Project-ID: 1819610
@@ -15,6 +15,7 @@
 Reminder.lua
 Food.lua
 TimedReminders.lua
+ClassBuffs.lua
 BagRules.lua
 KeepBagsOpen.lua
 MouseoverMacros.lua

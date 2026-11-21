@@ -14,7 +14,9 @@ read_globals = {
     "HideUIPanel", "InCombatLockdown", "InterfaceOptionsFrame_OpenToCategory",
     "InterfaceOptions_AddCategory", "IsAddOnLoaded", "IsBagOpen", "IsPlayerInWorld",
     "IsResting", "IsShiftKeyDown", "OpenBag", "PlaySound", "ToggleGameMenu", "UnitClass",
-    "UnitClassBase", "UnitIsDeadOrGhost", "UnitName", "date", "geterrorhandler",
+    "UnitClassBase", "UnitIsDeadOrGhost", "UnitName", "IsPlayerSpell", "IsSpellKnown",
+    "IsInRaid", "IsInGroup", "GetNumGroupMembers", "UnitExists", "UnitIsConnected",
+    "UnitIsVisible", "UnitInRange", "UnitIsUnit", "UnitPowerType", "date", "geterrorhandler",
     "hooksecurefunc", "issecretvalue", "strtrim", "tContains", "wipe",
     "ContainerFrame_AllowedToOpenBags", "ContainerFrame_GetContainerNumSlots",
     -- frames, mixins and constants

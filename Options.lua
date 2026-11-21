@@ -145,7 +145,7 @@ local MOVE_BUTTON = {
 local function BuildMain()
     local panel = NewPage("main", "Espi Utils")
     AddNote(panel, "Small quality-of-life tools. Pick a page on the left. Everything is also available from chat: /espiutils with no arguments lists the commands.")
-    AddNote(panel, "Pages:\n- Food Reminder\n- Timed Reminders (posture, water)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Mouseover Macros")
+    AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Mouseover Macros")
     return panel
 end
 
@@ -169,6 +169,32 @@ local function BuildFood()
           onClick = food.ResetPosition },
     })
     AddDefaults(panel, food.ResetDefaults)
+end
+
+local function BuildRebuff()
+    local panel = NewPage("rebuff", "Class Rebuff", true)
+    AddNote(panel, "Reminds you to recast your class buffs (Fortitude, Arcane Intellect, Mark of the Wild, Battle Shout, armors) when they are missing or about to run out. Paladins are warned when a blessing they cast is running low.")
+    local rebuff = EspiUtils.Rebuff
+    if not rebuff.HasBuffs() then
+        AddNote(panel, "No buffs are tracked for this character's class.")
+        return
+    end
+    AddCheck(panel, "Enable rebuff reminder", nil,
+        function() return rebuff.GetSettings().enabled end,
+        rebuff.SetEnabled)
+    AddCheck(panel, "Hide in rested areas", "Hide the reminder in cities and inns.",
+        function() return rebuff.GetSettings().hideResting end,
+        rebuff.SetHideResting)
+    AddNumber(panel, "Expiry warning (seconds, 0 = missing only)",
+        ("Whole number from 0 to %d."):format(rebuff.MAX_LEAD),
+        function() return rebuff.GetSettings().lead end,
+        rebuff.SetLead)
+    AddButtons(panel, {
+        MOVE_BUTTON,
+        { label = "Reset position", tip = "Default position and size for the rebuff reminder.",
+          onClick = rebuff.ResetPosition },
+    })
+    AddDefaults(panel, rebuff.ResetDefaults)
 end
 
 local function BuildTimed()
@@ -321,6 +347,7 @@ end
 function EspiUtils.InitializeOptions()
     local main = BuildMain()
     BuildFood()
+    BuildRebuff()
     BuildTimed()
     BuildBags()
     BuildKeep()
@@ -328,7 +355,7 @@ function EspiUtils.InitializeOptions()
     Register(main)
 end
 
--- key: "main", "food", "timed", "bags", "keep" or "mouseover"
+-- key: "main", "food", "rebuff", "timed", "bags", "keep" or "mouseover"
 function EspiUtils.OpenOptions(key)
     local panel = pages[key or "main"] or pages.main
     if not panel then return end

@@ -12,6 +12,12 @@ Shows a reminder when Well Fed is missing or about to expire.
 
 `/espiutils food [on | off | status | lead <seconds> | move | reset]`
 
+### Class rebuff reminder
+
+Shows a reminder when a buff your class maintains is missing or about to expire: Priest Fortitude and Inner Fire, Mage Arcane Intellect and armors, Druid Mark of the Wild and Thorns, Warrior Battle Shout. Group buffs are checked on you and on group members who are nearby. For Paladins it only warns when a blessing you cast is running low. Hidden in combat, while dead, and (by default) in rested areas.
+
+`/espiutils rebuff [on | off | status | lead <seconds> | move | reset]`
+
 ### Timed reminders
 
 Posture and water reminders that show for a few seconds at an interval, once you are alive and out of combat.

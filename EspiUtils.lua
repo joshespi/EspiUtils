@@ -205,6 +205,7 @@ local MODULE_ALIASES = {
 local function PrintHelp()
     Print("/espiutils (or /espi) options - open the settings")
     Print("/espiutils food [on | off | status | lead <seconds> | move | reset]")
+    Print("/espiutils rebuff [on | off | status | lead <seconds> | move | reset]")
     Print("/espiutils <posture|water> [on | off | status | interval <minutes> | test]")
     Print("/espiutils move [reset] - move and resize the reminders (shared by all characters)")
     Print("/espiutils bags [sort | stop | preview | on | off | pin | log | debug | probe]")
@@ -274,6 +275,8 @@ SlashCmdList.ESPIUTILS = function(message)
 
     if command == "food" then
         HandleFood(action, value)
+    elseif command == "rebuff" then
+        EspiUtils.HandleRebuffCommand(action, value)
     elseif command == "move" then
         HandleMove(action)
     elseif command == "options" or command == "config" or command == "settings" then
@@ -356,6 +359,9 @@ events:SetScript("OnEvent", function(self, event, ...)
         settings.x, settings.y = nil, nil
         EspiUtils.InitTiles(account.tiles)
         EspiUtils.InitializeTimedReminders(settings)
+        if not xpcall(EspiUtils.InitializeRebuff, geterrorhandler(), settings) then
+            Print("Rebuff reminders failed to start. See the error above.")
+        end
 
         InitModule("bags", EspiUtils.InitBagRules, account)
         InitModule("keep", EspiUtils.InitKeepBagsOpen, settings)

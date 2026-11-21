@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.1.0
+
+- New class rebuff reminder: warns when a class buff is missing or about to run out. Tracks Fortitude, Arcane Intellect and your armor, Mark of the Wild and Thorns, Battle Shout and Inner Fire. Paladins are warned when a blessing they cast is running low. Settings are on the new Class Rebuff page or under `/espiutils rebuff`.
+
 ## 1.0.2
 
 - Bag Rules has a new option, "Sort quest items with junk" (off by default; `/espiutils bags quest`). Quest items go to the bottom of the bags after the grey items.
