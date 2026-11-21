@@ -2,7 +2,7 @@
 
 Small quality-of-life tools for World of Warcraft (retail 12.x and WoW Forever). Open the settings with `/espiutils options` (Esc > Options > AddOns > Espi Utils), or use the commands below. `/espiutils` with no arguments lists them.
 
-This addon replaces the standalone EspiBagRules, KeepBagsOpen and MouseoverMacros addons. Disable or delete those before using it: a module stays off while its old addon is enabled. Settings are copied over from the old addons on first load.
+This addon replaces the standalone EspiBagRules, KeepBagsOpen and MouseoverMacros addons. A module stays off while its old addon is enabled. To bring your old settings over, log in once with both the old addons and Espi Utils enabled, then disable the old addons and `/reload`: the settings are copied on that load. (WoW only loads an addon's saved settings while that addon is enabled, so disabling the old ones first leaves nothing to copy.)
 
 ## Features
 
@@ -17,6 +17,10 @@ Shows a reminder when Well Fed is missing or about to expire.
 Posture and water reminders that show for a few seconds at an interval, once you are alive and out of combat.
 
 `/espiutils <posture|water> [on | off | status | interval <minutes> | test]`
+
+### Moving and resizing reminders
+
+`/espiutils move` shows every reminder: drag one to move it, scroll over it to resize it, and right-click it (or run `/espiutils move` again) to lock. Positions and sizes are saved account-wide, so every character uses the same layout. `/espiutils move reset` puts them all back.
 
 ### Bag Rules
 

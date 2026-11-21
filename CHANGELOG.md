@@ -1,6 +1,8 @@
-# Changelog
+﻿# Changelog
 
-## Unreleased
+## 1.0.0
+
+- All reminder tiles (Well Fed, posture, water) can be moved and resized with `/espiutils move` or the Move reminders button: drag to move, scroll to resize, right-click to lock. Positions and sizes are saved account-wide, so every character shares them. The first character to log in carries its Well Fed position over.
 
 - A module that fails to start no longer stops the rest of Espi Utils from loading.
 - Missing game APIs (spell data, tooltip info, item locations, class lookup) are now guarded instead of raising errors.
@@ -13,6 +15,16 @@
 - Each settings page has a "Reset to defaults" button, and the Settings window's Defaults button now works for the Food, Timed Reminders, Bag Rules and Keep Bags Open pages. Mouseover Macros keeps your spell list.
 - Keep Bags Open backs off its retries while a panel blocks bags, and reuses its bag list.
 - `/espiutils help` lists the `/espi` alias and `keep blocked clear`.
+- Settings from the old standalone addons now copy over: log in once with them enabled, then disable them and /reload. A mouseover spell list that 0.3.0 failed to copy is recovered the same way, as long as no spells were added since.
+- The Well Fed reminder no longer appears for a moment as combat starts.
+- Moving the Well Fed reminder is refused while dead.
+- Turning Keep Bags Open on reopens the saved bags right away instead of on the next bag update.
+- `/espiutils keep config` opens the Keep Bags Open page, like `/kbo config`.
+- Bag Rules no longer prints "sorting by slot order" on every sort with separate bags (it is in the debug output), and refuses to sort on clients without the ItemLocation API instead of erroring.
+- Removing mouseover spells ignores blank entries.
+- The water reminder's default interval is now 30 minutes (saved intervals are unchanged).
+- Clean Up at the bank waits for the reagent deposits to land before sorting.
+- Releases are linted with luacheck before packaging.
 
 ## 0.3.0
 
