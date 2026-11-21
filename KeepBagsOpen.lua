@@ -28,9 +28,9 @@ end
 local MAX_BAG = NUM_TOTAL_BAG_FRAMES or NUM_BAG_FRAMES
 
 -- Same order as OpenAllBags so frames land where Blizzard puts them.
--- Callers only read the list, so the keyring-free case reuses one table
+-- Callers only read the list, so both variants are built once and reused
 -- (this runs on every bag update).
-local baseIDs
+local baseIDs, keyringIDs
 local function TrackedIDs()
     if not baseIDs then
         baseIDs = {}
@@ -42,9 +42,11 @@ local function TrackedIDs()
     if not key then
         return baseIDs
     end
-    local ids = { unpack(baseIDs) }
-    ids[#ids + 1] = key
-    return ids
+    if not keyringIDs then
+        keyringIDs = { unpack(baseIDs) }
+        keyringIDs[#keyringIDs + 1] = key
+    end
+    return keyringIDs
 end
 
 local function Snapshot()
@@ -115,16 +117,13 @@ function Reconcile()
     end
     deferred = nil
     local list = Missing()
-    if not list then
-        retryCount = 0
-        return
-    end
     -- Center panels, hidden UI, cinematics: wait until bags are allowed again.
-    if not Allowed() then
+    if list and not Allowed() then
         Retry()
         return
     end
     retryCount = 0
+    if not list then return end
     lastOpened, lastOpenedAt = table.concat(list, ","), GetTime()
     reconciling = true
     xpcall(OpenList, geterrorhandler(), list)
@@ -265,9 +264,7 @@ local function HookAll()
     end
 end
 
-local function Print(msg)
-    EspiUtils.Print("|cff33ff99Keep bags open:|r " .. msg)
-end
+local Print = EspiUtils.Printer("Keep bags open", "33ff99")
 
 local function Ago(seconds)
     -- Entries saved before this stored a number hold "1.2s" or "never".
@@ -319,8 +316,8 @@ local function PrintBlocked()
     end
 end
 
-local function PrintStatus(on)
-    if on then
+local function PrintStatus()
+    if db.enabled then
         local n = #db.want
         Print(("on, keeping %d bag%s open."):format(n, n == 1 and "" or "s"))
     else
@@ -328,12 +325,12 @@ local function PrintStatus(on)
     end
 end
 
--- Runs when the enabled flag changes, from any source.
-local function Apply(on)
+local function SetEnabled(on)
+    db.enabled = on and true or false
     -- Whatever is open when you turn it on is what it keeps open. If nothing
     -- is (Escape closed them on the way to Settings), keep the saved set.
     deferred = nil
-    if on then
+    if db.enabled then
         local open = Allowed() and Snapshot()
         if open and #open > 0 then
             db.want = open
@@ -341,13 +338,10 @@ local function Apply(on)
             Print("on. No bags are open; open the ones you want kept.")
             return
         end
+        -- Reopen the saved set now (or once bags are allowed), not on the next bag update.
+        Reconcile()
     end
-    PrintStatus(on)
-end
-
-local function SetEnabled(on)
-    db.enabled = on and true or false
-    Apply(db.enabled)
+    PrintStatus()
 end
 
 EspiUtils.Keep = {
@@ -371,7 +365,7 @@ end)
 
 function EspiUtils.InitKeepBagsOpen(settings)
     db = settings
-    if db.enabled == nil then db.enabled = true end
+    EspiUtils.ApplyDefaults(db, { enabled = true })
     db.want = db.want or {}
     db.blocked = db.blocked or {}
     HookAll()
@@ -391,12 +385,14 @@ function EspiUtils.HandleKeepBagsCommand(msg)
     elseif msg == "off" then
         SetEnabled(false)
     elseif msg == "status" then
-        PrintStatus(db.enabled)
+        PrintStatus()
     elseif msg == "blocked" then
         PrintBlocked()
     elseif msg == "blocked clear" then
         wipe(db.blocked)
         Print("blocked actions cleared.")
+    elseif msg == "config" or msg == "options" then
+        EspiUtils.OpenOptions("keep")
     else
         Print("/espiutils keep [on | off | status | blocked | blocked clear]")
         Print("no argument toggles; on keeps the bags open right now")
