@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.0.2
+
+- Bag Rules has a new option, "Sort quest items with junk" (off by default; `/espiutils bags quest`). Quest items go to the bottom of the bags after the grey items.
+
 ## 1.0.1
 
 - The Well Fed reminder is now hidden in rested areas (cities and inns) by default, including for existing characters. Untick "Hide in rested areas" on the Food Reminder page to show it there again.

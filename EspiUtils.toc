@@ -2,7 +2,7 @@
 ## Title: Espi Utils
 ## Notes: Well Fed, posture and hydration reminders, custom bag sorting, keep bags open, and mouseover macros. /espiutils options
 ## Author: Espi
-## Version: 1.0.1
+## Version: 1.0.2
 ## Category: Utility
 ## IconTexture: Interface\Icons\INV_Misc_Bag_08
 ## X-Curse-Project-ID: 1819610

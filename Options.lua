@@ -214,6 +214,7 @@ local function BuildBags()
         { "enabled", "Clean Up button uses this sort", "Off: the button runs Blizzard's sort." },
         { "depositReagents", "Deposit reagents when the bank is open", "Clean Up first sends crafting reagents to the bank, then sorts the rest." },
         { "pinBound", "Pin conjured, junk and bound gear to the last slots", "Off: they are packed right after BoE gear." },
+        { "questToJunk", "Sort quest items with junk", "Quest items go to the bottom with grey items (follows the pin setting above)." },
         { "debug", "Debug output", "Per-pass detail in chat and the log." },
     }) do
         local key = c[1]

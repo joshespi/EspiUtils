@@ -11,6 +11,7 @@ local defaults = {
     enabled = true,  -- Clean Up button uses the Espi Utils sort
     depositReagents = false, -- Clean Up at an open bank deposits crafting reagents first
     pinBound = true, -- bottom block (conjured, junk, bound gear) pinned to the last slots
+    questToJunk = false, -- quest items sort with junk at the bottom
     debug = false,   -- per-pass detail in chat and the log
 }
 
@@ -148,6 +149,15 @@ local function IsTool(itemID, classID, subClassID)
         or (classID == Enum.ItemClass.Weapon and subClassID == FISHING_POLE)
 end
 
+local function IsQuestItem(bag, slot, classID)
+    if classID == Enum.ItemClass.Questitem then return true end
+    if C_Container.GetContainerItemQuestInfo then
+        local q = C_Container.GetContainerItemQuestInfo(bag, slot)
+        return q ~= nil and q.isQuestItem == true
+    end
+    return false
+end
+
 local function IsGear(classID, equipLoc)
     return (classID == Enum.ItemClass.Weapon or classID == Enum.ItemClass.Armor)
         and equipLoc ~= nil and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"
@@ -229,7 +239,7 @@ local function Classify(bag, slot, info, sets, general)
         classID = classID or 0, subClassID = subClassID or 0,
         ilvl = C_Item.GetCurrentItemLevel(loc) or 0,
         slotOrder = gear and SLOT_ORDER[equipLoc] or 99,
-        setRank = 0,
+        setRank = 0, quest = false,
         reagent = static.reagent == true, -- isCraftingReagent
         maxStack = static.maxStack, family = static.family or 0,
     }
@@ -240,6 +250,9 @@ local function Classify(bag, slot, info, sets, general)
         rec.section = TOOLS
     elseif quality == Enum.ItemQuality.Poor then
         rec.section = JUNK
+    elseif db.questToJunk and IsQuestItem(bag, slot, classID) then
+        rec.section = JUNK
+        rec.quest = true -- sorts after the grey items
     elseif not general then
         rec.section = OTHER
     elseif TOYGEAR_IDS[itemID] then
@@ -266,6 +279,7 @@ end
 
 local function Compare(a, b)
     if a.section ~= b.section then return a.section < b.section end
+    if a.quest ~= b.quest then return b.quest end -- quest items after the grey ones
     if a.setRank ~= b.setRank then return a.setRank < b.setRank end
     if a.slotOrder ~= b.slotOrder then return a.slotOrder < b.slotOrder end
     if a.classID ~= b.classID then return a.classID < b.classID end
@@ -763,6 +777,7 @@ local function Probe()
         { "C_Container.GetBagSlotFlag", C.GetBagSlotFlag },
         { "C_Container.GetBackpackAutosortDisabled", C.GetBackpackAutosortDisabled },
         { "C_Container.GetContainerItemEquipmentSetInfo", C.GetContainerItemEquipmentSetInfo },
+        { "C_Container.GetContainerItemQuestInfo", C.GetContainerItemQuestInfo },
         { "C_Item.GetItemInfo", I.GetItemInfo }, { "C_Item.GetItemInfoInstant", I.GetItemInfoInstant },
         { "C_Item.GetCurrentItemLevel", I.GetCurrentItemLevel },
         { "C_Item.GetItemMaxStackSizeByID", I.GetItemMaxStackSizeByID },
@@ -901,6 +916,7 @@ local HELP = {
     "/espiutils bags on - Clean Up button uses the Espi Utils sort",
     "/espiutils bags off - Clean Up button uses Blizzard's sort",
     "/espiutils bags pin - toggle conjured, junk and bound gear pinned to the last slots",
+    "/espiutils bags quest - toggle sorting quest items with junk",
     ("/espiutils bags log - show the last %d log lines"):format(LOG_SHOW),
     "/espiutils bags debug - toggle per-pass detail in chat and the log",
     "Shift-click Clean Up for Blizzard's sort",
@@ -922,6 +938,9 @@ function EspiUtils.HandleBagsCommand(msg)
     elseif cmd == "pin" then
         db.pinBound = not db.pinBound
         Print(db.pinBound and "bottom block pinned to the last slots" or "bottom block packed after BoE")
+    elseif cmd == "quest" then
+        db.questToJunk = not db.questToJunk
+        Print(db.questToJunk and "quest items sort with junk" or "quest items sort in Other")
     elseif cmd == "debug" then
         db.debug = not db.debug
         Print("debug " .. (db.debug and "on" or "off"))
@@ -931,8 +950,9 @@ function EspiUtils.HandleBagsCommand(msg)
         for i = math.max(1, #log - LOG_SHOW + 1), #log do Print(log[i]) end
     else
         if cmd ~= "" and cmd ~= "help" then Print(("unknown command '%s'"):format(cmd)) end
-        Print(("override %s, pin %s, debug %s"):format(
-            db.enabled and "on" or "off", db.pinBound and "on" or "off", db.debug and "on" or "off"))
+        Print(("override %s, pin %s, quest->junk %s, debug %s"):format(
+            db.enabled and "on" or "off", db.pinBound and "on" or "off",
+            db.questToJunk and "on" or "off", db.debug and "on" or "off"))
         for _, line in ipairs(HELP) do Print(line) end
     end
 end

@@ -33,11 +33,11 @@ A custom Clean Up. Your general bags are sorted, in on-screen order, into:
 5. **Heirloom**: heirloom gear not in a set.
 6. **Other**: everything else by type, quality, item level and name.
 7. **BoE**: gear you can still trade or send to an alt (unbound, Warbound, Warbound until equipped).
-8. Conjured, then Junk, then Bound gear, pinned to the last slots.
+8. Conjured, then Junk, then Bound gear, pinned to the last slots. With "Sort quest items with junk" on, quest items go at the very end, after the grey items.
 
 Partial stacks are merged, the reagent and profession bags sort within themselves, and bags set to "Ignore this bag" are left alone. Shift-click Clean Up for Blizzard's sort.
 
-`/espiutils bags [sort | stop | preview | on | off | pin | log | debug | probe]`
+`/espiutils bags [sort | stop | preview | on | off | pin | quest | log | debug | probe]`
 
 `/bagrules` and `/brules` still work. The log keeps the last 200 lines in the saved variables, written on `/reload` or logout.
 
