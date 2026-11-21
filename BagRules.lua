@@ -9,6 +9,7 @@ local LOG_SHOW = 15        -- lines "/espiutils bags log" prints
 
 local defaults = {
     enabled = true,  -- Clean Up button uses the Espi Utils sort
+    depositReagents = false, -- Clean Up at an open bank deposits crafting reagents first
     pinBound = true, -- bottom block (conjured, junk, bound gear) pinned to the last slots
     debug = false,   -- per-pass detail in chat and the log
 }
@@ -128,6 +129,7 @@ end
 local conjured = {} -- itemID -> bool
 local function IsConjured(bag, slot, itemID)
     if conjured[itemID] == nil then
+        if not (C_TooltipInfo and C_TooltipInfo.GetBagItem) then return false end
         local data = C_TooltipInfo.GetBagItem(bag, slot)
         if not (data and data.lines and #data.lines > 0) then return false end -- not loaded; retry next pass
         conjured[itemID] = false
@@ -186,13 +188,32 @@ end
 
 local loc = ItemLocation and ItemLocation:CreateEmpty() -- reused: Classify never keeps it
 
+-- Static per-item data, looked up once per itemID instead of on every pass.
+local staticInfo = {} -- itemID -> { equipLoc, classID, subClassID, reagent }
+local function StaticInfo(itemID)
+    local s = staticInfo[itemID]
+    if not s then
+        local _, _, _, equipLoc, _, classID, subClassID = C_Item.GetItemInfoInstant(itemID)
+        s = { equipLoc = equipLoc, classID = classID, subClassID = subClassID }
+        staticInfo[itemID] = s
+    end
+    if s.reagent == nil then
+        local name, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, isReagent = C_Item.GetItemInfo(itemID)
+        if name then -- only cache once the item data has loaded
+            s.reagent = isReagent == true
+        end
+    end
+    return s
+end
+
 -- reagent and profession bags use Camping, Tools, Other and Junk
 local function Classify(bag, slot, info, sets, general)
     local itemID = info.itemID
     local count = info.stackCount or 1
     local link = info.hyperlink or tostring(itemID)
     local quality = info.quality or 0
-    local _, _, _, equipLoc, _, classID, subClassID = C_Item.GetItemInfoInstant(itemID)
+    local static = StaticInfo(itemID)
+    local equipLoc, classID, subClassID = static.equipLoc, static.classID, static.subClassID
     loc:SetBagAndSlot(bag, slot)
     local gear = IsGear(classID, equipLoc)
 
@@ -204,7 +225,7 @@ local function Classify(bag, slot, info, sets, general)
         ilvl = C_Item.GetCurrentItemLevel(loc) or 0,
         slotOrder = gear and SLOT_ORDER[equipLoc] or 99,
         setRank = 0,
-        reagent = select(17, C_Item.GetItemInfo(itemID)) == true, -- isCraftingReagent
+        reagent = static.reagent == true, -- isCraftingReagent
     }
 
     if CAMPING_IDS[itemID] then
@@ -757,6 +778,27 @@ local function Probe()
     Say(("probe on interface %s: %d of %d missing"):format(tostring(build), missing, #checks))
 end
 
+-- Bank deposit --------------------------------------------------------------
+
+local bankOpen = false
+
+-- sends every unlocked crafting reagent in the bags to the bank; returns how many were sent
+local function DepositReagents()
+    local sent = 0
+    for bag = Enum.BagIndex.Backpack, Enum.BagIndex.ReagentBag do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            if info and not info.isLocked then
+                if StaticInfo(info.itemID).reagent then
+                    C_Container.UseContainerItem(bag, slot, nil, Enum.BankType and Enum.BankType.Character)
+                    sent = sent + 1
+                end
+            end
+        end
+    end
+    return sent
+end
+
 -- Button hook ---------------------------------------------------------------
 
 local function HookButton()
@@ -772,7 +814,12 @@ local function HookButton()
             return
         end
         PlaySound(SOUNDKIT.UI_BAG_SORTING_01)
-        Sort()
+        if db.depositReagents and bankOpen and not run and not InCombatLockdown() and not GetCursorInfo()
+            and DepositReagents() > 0 then
+            C_Timer.After(0.6, Sort) -- let the deposits land before sorting what's left
+        else
+            Sort()
+        end
     end)
     btn:HookScript("OnEnter", function()
         if not db.enabled then return end -- a plain click already is Blizzard's sort
@@ -784,11 +831,15 @@ end
 
 -- Events --------------------------------------------------------------------
 
-frame:SetScript("OnEvent", function(_, event)
+frame:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_LOGIN" then
         HookButton()
     elseif event == "PLAYER_REGEN_DISABLED" then
         Stop("combat started")
+    elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" or event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+        if Enum.PlayerInteractionType and arg1 == Enum.PlayerInteractionType.Banker then
+            bankOpen = event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW"
+        end
     end
 end)
 
@@ -800,6 +851,8 @@ function EspiUtils.InitBagRules(settings)
     db.log = db.log or {}
     frame:RegisterEvent("PLAYER_LOGIN")
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    frame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
+    frame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
 end
 
 -- used by the options screen
@@ -807,6 +860,9 @@ EspiUtils.Bags = {
     GetSettings = function() return db end,
     Sort = function() Sort() end,
     Preview = function() Preview() end,
+    ResetDefaults = function()
+        for k, v in pairs(defaults) do db[k] = v end
+    end,
 }
 
 -- Commands ------------------------------------------------------------------

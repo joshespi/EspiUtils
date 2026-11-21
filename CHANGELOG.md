@@ -1,4 +1,18 @@
-﻿# Changelog
+# Changelog
+
+## Unreleased
+
+- A module that fails to start no longer stops the rest of Espi Utils from loading.
+- Missing game APIs (spell data, tooltip info, item locations, class lookup) are now guarded instead of raising errors.
+- Moving the Well Fed reminder is refused in combat; failures to register the settings panel are reported in chat.
+- Posture and water reminders keep their timing across reloads and logouts.
+- The Well Fed reminder can be locked with a right-click, and the Move button closes the Settings window so the reminder is visible.
+- Invalid saved Well Fed settings fall back to defaults; checkbox labels are clickable.
+- Buff changes are batched, so the Well Fed reminder updates once per burst instead of on every aura event.
+- Bag Rules looks up each item's type and reagent flag once instead of on every sort pass.
+- Each settings page has a "Reset to defaults" button, and the Settings window's Defaults button now works for the Food, Timed Reminders, Bag Rules and Keep Bags Open pages. Mouseover Macros keeps your spell list.
+- Keep Bags Open backs off its retries while a panel blocks bags, and reuses its bag list.
+- `/espiutils help` lists the `/espi` alias and `keep blocked clear`.
 
 ## 0.3.0
 

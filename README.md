@@ -1,4 +1,4 @@
-﻿# Espi Utils
+# Espi Utils
 
 Small quality-of-life tools for World of Warcraft (retail 12.x and WoW Forever). Open the settings with `/espiutils options` (Esc > Options > AddOns > Espi Utils), or use the commands below. `/espiutils` with no arguments lists them.
 

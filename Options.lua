@@ -60,6 +60,8 @@ local function AddCheck(panel, label, tip, get, set)
     local text = check:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     text:SetPoint("LEFT", check, "RIGHT", 4, 0)
     text:SetText(label)
+    -- make the label part of the click target
+    check:SetHitRectInsets(0, -(text:GetStringWidth() + 8), 0, 0)
     check:SetScript("OnClick", function(self) set(self:GetChecked() and true or false) end)
     Tooltip(check, tip)
     panel.refreshers[#panel.refreshers + 1] = function() check:SetChecked(get()) end
@@ -108,6 +110,17 @@ local function AddButtons(panel, specs)
     panel.y = panel.y - 32
 end
 
+-- Adds a "Reset to defaults" button and wires the Settings window's own Defaults
+-- button (panel.OnDefault) to the same reset.
+local function AddDefaults(panel, reset)
+    local function run()
+        reset()
+        for _, refresh in ipairs(panel.refreshers) do refresh() end
+    end
+    panel.OnDefault = run
+    AddButtons(panel, { { label = "Reset to defaults", width = 140, onClick = run } })
+end
+
 local function ModuleOff(panel, key)
     local legacy = EspiUtils.legacy[key]
     AddNote(panel, ("|cffff6060Off:|r the old %s addon is enabled. Disable it in the AddOns list and /reload to use this."):format(legacy.addon))
@@ -129,14 +142,23 @@ local function BuildFood()
     AddCheck(panel, "Enable food reminder", nil,
         function() return food.GetSettings().enabled end,
         function(on) food.SetEnabled(on) end)
+    AddCheck(panel, "Hide in rested areas", "Hide the reminder in cities and inns.",
+        function() return food.GetSettings().hideResting end,
+        function(on) food.SetHideResting(on) end)
     AddNumber(panel, "Expiry warning (seconds, 0 = missing only)", "Whole number from 0 to 300.",
         function() return food.GetSettings().lead end,
         function(v) return food.SetLead(v) end)
     AddButtons(panel, {
-        { label = "Move reminder", tip = "Toggle drag mode. Drag the reminder, then click again to lock.",
-          onClick = function() food.ToggleMove() end },
+        { label = "Move reminder", tip = "Toggle drag mode. Drag the reminder, then right-click it to lock.",
+          onClick = function()
+              -- The Settings window would cover the reminder, so close it to drag.
+              if food.ToggleMove() and SettingsPanel and SettingsPanel:IsShown() then
+                  HideUIPanel(SettingsPanel)
+              end
+          end },
         { label = "Reset position", onClick = function() food.ResetPosition() end },
     })
+    AddDefaults(panel, function() food.ResetDefaults() end)
 end
 
 local function BuildTimed()
@@ -160,6 +182,7 @@ local function BuildTimed()
             end },
         })
     end
+    AddDefaults(panel, function() EspiUtils.ResetTimedReminders() end)
 end
 
 local function BuildBags()
@@ -170,6 +193,9 @@ local function BuildBags()
     AddCheck(panel, "Clean Up button uses this sort", "Off: the button runs Blizzard's sort.",
         function() return bags.GetSettings().enabled end,
         function(on) bags.GetSettings().enabled = on end)
+    AddCheck(panel, "Deposit reagents when the bank is open", "Clean Up first sends crafting reagents to the bank, then sorts the rest.",
+        function() return bags.GetSettings().depositReagents end,
+        function(on) bags.GetSettings().depositReagents = on end)
     AddCheck(panel, "Pin conjured, junk and bound gear to the last slots", "Off: they are packed right after BoE gear.",
         function() return bags.GetSettings().pinBound end,
         function(on) bags.GetSettings().pinBound = on end)
@@ -180,6 +206,7 @@ local function BuildBags()
         { label = "Sort now", tip = "Open your bags first so their layout is used.", onClick = function() bags.Sort() end },
         { label = "Preview", tip = "Counts per section in chat; moves nothing.", onClick = function() bags.Preview() end },
     })
+    AddDefaults(panel, function() bags.ResetDefaults() end)
 end
 
 local function BuildKeep()
@@ -190,6 +217,7 @@ local function BuildKeep()
     AddCheck(panel, "Keep bags open", "Turning it on keeps whatever bags are open right now.",
         function() return keep.GetSettings().enabled end,
         function(on) keep.SetEnabled(on) end)
+    AddDefaults(panel, function() keep.SetEnabled(true) end)
 end
 
 local function BuildMouseover()
@@ -253,7 +281,7 @@ end
 
 local function Register(main)
     if Settings and Settings.RegisterCanvasLayoutCategory then
-        local ok = pcall(function()
+        local ok, err = pcall(function()
             local category = Settings.RegisterCanvasLayoutCategory(main, main.name)
             main.category = category
             for _, panel in ipairs(ordered) do
@@ -262,6 +290,7 @@ local function Register(main)
             Settings.RegisterAddOnCategory(category)
         end)
         if ok then return end
+        EspiUtils.Print("Couldn't register the settings panel: " .. tostring(err))
     end
     if InterfaceOptions_AddCategory then
         InterfaceOptions_AddCategory(main)

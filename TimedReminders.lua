@@ -17,11 +17,15 @@ local definitions = {
         title = "Drink water",
         detail = "Take a sip of water.",
         icon = "Interface\\Icons\\INV_Drink_07",
-        minutes = 60,
+        minutes = 30,
         y = -102,
     },
 }
 local reminders = {}
+
+local function ValidMinutes(m)
+    return type(m) == "number" and m >= 1 and m <= MAX_MINUTES and m % 1 == 0
+end
 
 local function CanShow()
     return not InCombatLockdown() and not UnitIsDeadOrGhost("player")
@@ -44,11 +48,17 @@ local function Show(reminder)
     end)
 end
 
-local function Schedule(reminder)
-    reminder.intervalTimer = C_Timer.NewTimer(reminder.settings.minutes * 60, function()
+-- lastShown is saved so that short play sessions still get their reminders.
+local function Fire(reminder)
+    reminder.settings.lastShown = GetServerTime()
+    Show(reminder)
+end
+
+local function Schedule(reminder, delay)
+    reminder.intervalTimer = C_Timer.NewTimer(delay or reminder.settings.minutes * 60, function()
         reminder.intervalTimer = nil
         if CanShow() then
-            Show(reminder)
+            Fire(reminder)
             Schedule(reminder)
         else
             reminder.pending = true
@@ -56,14 +66,22 @@ local function Schedule(reminder)
     end)
 end
 
-local function Restart(reminder)
+-- resume keeps the saved clock (login); otherwise the interval starts over.
+local function Restart(reminder, resume)
     if reminder.intervalTimer then
         reminder.intervalTimer:Cancel()
         reminder.intervalTimer = nil
     end
     reminder.pending = false
     if reminder.settings.enabled then
-        Schedule(reminder)
+        local delay
+        local last = reminder.settings.lastShown
+        if resume and type(last) == "number" then
+            delay = math.max(0, last + reminder.settings.minutes * 60 - GetServerTime())
+        else
+            reminder.settings.lastShown = GetServerTime()
+        end
+        Schedule(reminder, delay)
     else
         Dismiss(reminder)
     end
@@ -77,8 +95,7 @@ function EspiUtils.InitializeTimedReminders(settings)
             saved = { enabled = true, minutes = definition.minutes }
             settings.timedReminders[definition.command] = saved
         end
-        local m = saved.minutes
-        if type(m) ~= "number" or m < 1 or m > MAX_MINUTES or m % 1 ~= 0 then
+        if not ValidMinutes(saved.minutes) then
             saved.minutes = definition.minutes
         end
         local frame, detail = EspiUtils.CreateReminder(definition.title, definition.icon)
@@ -87,7 +104,7 @@ function EspiUtils.InitializeTimedReminders(settings)
 
         local reminder = { frame = frame, settings = saved, title = definition.title }
         reminders[definition.command] = reminder
-        Restart(reminder)
+        Restart(reminder, true)
     end
 end
 
@@ -99,7 +116,7 @@ function EspiUtils.RefreshTimedReminders(event)
             Dismiss(reminder)
         elseif reminder.pending then
             reminder.pending = false
-            Show(reminder)
+            Fire(reminder)
             Schedule(reminder)
         end
     end
@@ -129,7 +146,7 @@ end
 -- Returns true when minutes was a valid whole number in range.
 function EspiUtils.SetTimedReminderMinutes(command, minutes)
     local reminder = reminders[command]
-    if not reminder or not minutes or minutes < 1 or minutes > MAX_MINUTES or minutes % 1 ~= 0 then
+    if not reminder or not ValidMinutes(minutes) then
         return false
     end
     if reminder.settings.minutes ~= minutes then
@@ -137,6 +154,17 @@ function EspiUtils.SetTimedReminderMinutes(command, minutes)
         Restart(reminder)
     end
     return true
+end
+
+function EspiUtils.ResetTimedReminders()
+    for _, definition in ipairs(definitions) do
+        local reminder = reminders[definition.command]
+        if reminder then
+            reminder.settings.enabled = true
+            reminder.settings.minutes = definition.minutes
+            Restart(reminder)
+        end
+    end
 end
 
 -- Returns true when the preview was shown.

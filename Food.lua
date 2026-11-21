@@ -9,6 +9,9 @@ function EspiUtils.GetFoodState()
         return
     end
     local issecretvalue = issecretvalue or function() return false end
+    if not (C_Spell and C_Spell.GetSpellName and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName) then
+        return
+    end
 
     local name = C_Spell.GetSpellName(WELL_FED)
     if not name then

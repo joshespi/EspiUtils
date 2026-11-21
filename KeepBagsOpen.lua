@@ -28,15 +28,22 @@ end
 local MAX_BAG = NUM_TOTAL_BAG_FRAMES or NUM_BAG_FRAMES
 
 -- Same order as OpenAllBags so frames land where Blizzard puts them.
+-- Callers only read the list, so the keyring-free case reuses one table
+-- (this runs on every bag update).
+local baseIDs
 local function TrackedIDs()
-    local ids = {}
-    for id = BACKPACK_CONTAINER, MAX_BAG do
-        ids[#ids + 1] = id
+    if not baseIDs then
+        baseIDs = {}
+        for id = BACKPACK_CONTAINER, MAX_BAG do
+            baseIDs[#baseIDs + 1] = id
+        end
     end
     local key = KeyringID()
-    if key then
-        ids[#ids + 1] = key
+    if not key then
+        return baseIDs
     end
+    local ids = { unpack(baseIDs) }
+    ids[#ids + 1] = key
     return ids
 end
 
@@ -82,10 +89,13 @@ local function RetryFire()
     Reconcile()
 end
 
+-- Poll quickly at first, then back off while a panel keeps bags blocked.
+local retryCount = 0
 local function Retry()
     if retrying then return end
     retrying = true
-    C_Timer.After(0.5, RetryFire)
+    retryCount = retryCount + 1
+    C_Timer.After(retryCount <= 10 and 0.5 or 2, RetryFire)
 end
 
 local function OpenList(list)
@@ -105,12 +115,16 @@ function Reconcile()
     end
     deferred = nil
     local list = Missing()
-    if not list then return end
+    if not list then
+        retryCount = 0
+        return
+    end
     -- Center panels, hidden UI, cinematics: wait until bags are allowed again.
     if not Allowed() then
         Retry()
         return
     end
+    retryCount = 0
     lastOpened, lastOpenedAt = table.concat(list, ","), GetTime()
     reconciling = true
     xpcall(OpenList, geterrorhandler(), list)
@@ -385,7 +399,7 @@ function EspiUtils.HandleKeepBagsCommand(msg)
         Print("blocked actions cleared.")
     else
         Print("/espiutils keep [on | off | status | blocked | blocked clear]")
-        print("  no argument toggles; on keeps the bags open right now")
+        Print("no argument toggles; on keeps the bags open right now")
     end
 end
 

@@ -18,4 +18,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Lint
+        uses: lunarmodules/luacheck@v1
+
+      - name: Check tag matches TOC version
+        run: |
+          toc=$(grep -m1 '^## Version:' EspiUtils.toc | sed 's/^## Version: *//' | tr -d '\r')
+          if [ "v$toc" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match TOC version $toc"; exit 1
+          fi
+
       - uses: BigWigsMods/packager@v2

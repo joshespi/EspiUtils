@@ -9,6 +9,7 @@ reminder:SetMovable(true)
 local settings
 local timer
 local moving = false
+local auraPending = false
 
 local function AnchorReminder()
     reminder:ClearAllPoints()
@@ -37,10 +38,10 @@ function UpdateReminder()
         return
     end
     if moving then
-        ShowReminder("Drag here. Repeat command to lock.")
+        ShowReminder("Drag to move. Right-click to lock.")
         return
     end
-    if not settings.enabled then
+    if not settings.enabled or (settings.hideResting and IsResting()) then
         reminder:Hide()
         return
     end
@@ -83,6 +84,12 @@ reminder:SetScript("OnDragStop", function(self)
     settings.x, settings.y = x * scale - parentX, y * scale - parentY
     AnchorReminder()
 end)
+reminder:SetScript("OnMouseUp", function(_, button)
+    if moving and button == "RightButton" then
+        EspiUtils.Food.ToggleMove()
+        Print("Reminder locked.")
+    end
+end)
 reminder:SetScript("OnHide", function(self)
     self:StopMovingOrSizing()
 end)
@@ -95,6 +102,10 @@ EspiUtils.Food = {
         settings.enabled = enabled and true or false
         UpdateReminder()
     end,
+    SetHideResting = function(hide)
+        settings.hideResting = hide and true or false
+        UpdateReminder()
+    end,
     -- true when seconds is a whole number from 0 to 300
     SetLead = function(seconds)
         if not seconds or seconds < 0 or seconds > 300 or seconds % 1 ~= 0 then
@@ -105,12 +116,25 @@ EspiUtils.Food = {
         return true
     end,
     ToggleMove = function()
+        if not moving and InCombatLockdown() then
+            return false, "combat"
+        end
         moving = not moving
         reminder:EnableMouse(moving)
         UpdateReminder()
         return moving
     end,
     ResetPosition = function()
+        settings.x, settings.y = nil, nil
+        AnchorReminder()
+        UpdateReminder()
+    end,
+    ResetDefaults = function()
+        settings.enabled = true
+        settings.hideResting = false
+        moving = false
+        reminder:EnableMouse(false)
+        settings.lead = DEFAULT_LEAD
         settings.x, settings.y = nil, nil
         AnchorReminder()
         UpdateReminder()
@@ -149,7 +173,12 @@ local function InitModule(key, init, ...)
         Print(("%s is off: disable the old %s addon."):format(legacy.title, legacy.addon))
         return
     end
-    init(...)
+    -- A failing module must not stop the rest of the addon from loading.
+    local ok = xpcall(init, geterrorhandler(), ...)
+    if not ok then
+        Print(("%s failed to start. See the error above."):format(legacy.title))
+        return
+    end
     EspiUtils.ready[key] = true
 end
 
@@ -191,11 +220,11 @@ local MODULE_ALIASES = {
 }
 
 local function PrintHelp()
-    Print("/espiutils options - open the settings")
+    Print("/espiutils (or /espi) options - open the settings")
     Print("/espiutils food [on | off | status | lead <seconds> | move | reset]")
     Print("/espiutils <posture|water> [on | off | status | interval <minutes> | test]")
     Print("/espiutils bags [sort | stop | preview | on | off | pin | log | debug | probe]")
-    Print("/espiutils keep [on | off | status | blocked]")
+    Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
 end
 
@@ -212,7 +241,11 @@ local function HandleFood(action, value)
         end
         Print(seconds == 0 and "Missing-buff reminders only." or ("Expiry warning set to %d seconds."):format(seconds))
     elseif action == "move" then
-        local nowMoving = food.ToggleMove()
+        local nowMoving, reason = food.ToggleMove()
+        if reason == "combat" then
+            Print("Can't move the reminder in combat.")
+            return
+        end
         Print(nowMoving and "Drag the reminder. Use /espiutils food move to finish." or "Reminder locked.")
     elseif action == "reset" then
         food.ResetPosition()
@@ -303,7 +336,13 @@ events:SetScript("OnEvent", function(self, event, ...)
         if settings.enabled == nil then
             settings.enabled = true
         end
-        settings.lead = settings.lead or DEFAULT_LEAD
+        -- SavedVariables can be hand-edited or corrupt: fall back to defaults.
+        if type(settings.lead) ~= "number" or settings.lead < 0 or settings.lead > 300 then
+            settings.lead = DEFAULT_LEAD
+        end
+        if type(settings.x) ~= "number" or type(settings.y) ~= "number" then
+            settings.x, settings.y = nil, nil
+        end
         AnchorReminder()
         EspiUtils.InitializeTimedReminders(settings)
 
@@ -313,10 +352,11 @@ events:SetScript("OnEvent", function(self, event, ...)
         InitModule("bags", EspiUtils.InitBagRules, account.bags)
         InitModule("keep", EspiUtils.InitKeepBagsOpen, settings.keep)
         InitModule("mouseover", EspiUtils.InitMouseover, account.mouseover)
-        EspiUtils.InitializeOptions()
+        xpcall(EspiUtils.InitializeOptions, geterrorhandler())
 
         self:RegisterUnitEvent("UNIT_AURA", "player")
         self:RegisterEvent("PLAYER_ENTERING_WORLD")
+        self:RegisterEvent("PLAYER_UPDATE_RESTING")
         self:RegisterEvent("PLAYER_REGEN_DISABLED")
         self:RegisterEvent("PLAYER_REGEN_ENABLED")
         self:RegisterEvent("PLAYER_DEAD")
@@ -324,7 +364,9 @@ events:SetScript("OnEvent", function(self, event, ...)
         self:RegisterEvent("PLAYER_UNGHOST")
         self:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
         self:RegisterEvent("SPELL_DATA_LOAD_RESULT")
-        C_Spell.RequestLoadSpellData(EspiUtils.wellFedSpellID)
+        if C_Spell and C_Spell.RequestLoadSpellData then
+            C_Spell.RequestLoadSpellData(EspiUtils.wellFedSpellID)
+        end
         if IsPlayerInWorld() then
             UpdateReminder()
         end
@@ -341,9 +383,18 @@ events:SetScript("OnEvent", function(self, event, ...)
             moving = false
             reminder:EnableMouse(false)
         end
-        if event ~= "UNIT_AURA" then
-            EspiUtils.RefreshTimedReminders(event)
+        if event == "UNIT_AURA" then
+            -- Aura events arrive in bursts; update once after they settle.
+            if not auraPending then
+                auraPending = true
+                C_Timer.After(0.2, function()
+                    auraPending = false
+                    UpdateReminder()
+                end)
+            end
+            return
         end
+        EspiUtils.RefreshTimedReminders(event)
         UpdateReminder()
     end
 end)

@@ -213,7 +213,7 @@ local db -- EspiUtilsAccountDB.mouseover, set by InitMouseover
 f:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
         db.spells = db.spells or {}
-        local class = UnitClassBase("player")
+        local class = UnitClassBase and UnitClassBase("player") or select(2, UnitClass("player"))
         db.spells[class] = db.spells[class] or {}
         spells = db.spells[class]
         for _, e in ipairs(spells) do
