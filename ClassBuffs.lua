@@ -41,10 +41,10 @@ local CLASS_BUFFS = {
 
 local CLASS = UnitClassBase and UnitClassBase("player") or select(2, UnitClass("player"))
 local issecretvalue = issecretvalue or function() return false end
-local Print = EspiUtils.Print
 local Tiles = EspiUtils.Tiles
 
-local reminder, detail = EspiUtils.CreateReminder("Rebuff", "Interface\\Icons\\Spell_Holy_WordFortitude")
+local DEFAULT_ICON = "Interface\\Icons\\Spell_Holy_WordFortitude"
+local reminder, detail, icon = EspiUtils.CreateReminder("Rebuff", DEFAULT_ICON)
 local events = CreateFrame("Frame")
 local settings
 local buffs -- this class's entries; nil when the class has none
@@ -127,7 +127,10 @@ local function EntryNames(entry)
     for _, id in ipairs(entry.ids) do
         if Known(id) then
             local name = C_Spell.GetSpellName(id)
-            if name then names[#names + 1] = name end
+            if name then
+                names[#names + 1] = name
+                entry.iconId = entry.iconId or id
+            end
         end
     end
     entry.names = names
@@ -136,7 +139,7 @@ end
 
 local function ForgetNames()
     if not buffs then return end
-    for _, entry in ipairs(buffs) do entry.names = nil end
+    for _, entry in ipairs(buffs) do entry.names, entry.iconId = nil, nil end
 end
 
 -- The first matching aura on unit, or nil. A second return of true means the
@@ -157,7 +160,7 @@ local function GetRebuffState(lead)
     if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then return end
 
     local reachable
-    local bestName, bestRemaining, nextCheck
+    local bestName, bestRemaining, nextCheck, bestEntry
     for _, entry in ipairs(buffs) do
         local names = EntryNames(entry)
         -- An entry whose spells the player doesn't know has no names: nothing to scan.
@@ -179,21 +182,24 @@ local function GetRebuffState(lead)
                         local wait = remaining - lead
                         if not nextCheck or wait < nextCheck then nextCheck = wait end
                     elseif remaining > 0 and (not bestRemaining or remaining < bestRemaining) then
-                        bestName, bestRemaining = names[1], remaining
+                        bestName, bestRemaining, bestEntry = names[1], remaining, entry
                     end
                 elseif not entry.mine then
-                    return names[1], "missing"
+                    return names[1], "missing", nil, nil, entry
                 end
             end
         end
     end
-    if bestName then return bestName, "expiring", bestRemaining, nextCheck end
+    if bestName then return bestName, "expiring", bestRemaining, nextCheck, bestEntry end
     return nil, nil, nil, nextCheck
 end
 
 -- Display ------------------------------------------------------------------------
 
-local function ShowReminder(message)
+-- entry: the buff being shown, whose spell icon replaces the default one.
+local function ShowReminder(message, entry)
+    local texture = entry and entry.iconId and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(entry.iconId)
+    icon:SetTexture(texture or DEFAULT_ICON)
     detail:SetText(message)
     reminder:Show()
 end
@@ -221,13 +227,13 @@ local function UpdateReminder()
         return
     end
 
-    local name, state, remaining, nextCheck = GetRebuffState(settings.lead)
+    local name, state, remaining, nextCheck, entry = GetRebuffState(settings.lead)
     local delay = nextCheck
     if state == "missing" then
-        ShowReminder(("%s missing"):format(name))
+        ShowReminder(("%s missing"):format(name), entry)
     elseif state == "expiring" then
         local seconds = math.ceil(remaining)
-        ShowReminder(("%s expires in %d:%02d"):format(name, math.floor(seconds / 60), seconds % 60))
+        ShowReminder(("%s expires in %d:%02d"):format(name, math.floor(seconds / 60), seconds % 60), entry)
         delay = remaining - seconds + 1 -- tick once a second for the countdown
     else
         reminder:Hide()
@@ -245,65 +251,25 @@ end
 
 -- API, shared by the slash command and the options screen ---------------------------
 
-EspiUtils.Rebuff = {
-    GetSettings = function() return settings end,
-    HasBuffs = function() return buffs ~= nil end,
-    SetEnabled = function(enabled)
-        settings.enabled = enabled and true or false
-        UpdateReminder()
-    end,
-    SetHideResting = function(hide)
-        settings.hideResting = hide and true or false
-        UpdateReminder()
-    end,
-    MAX_LEAD = MAX_LEAD,
-    -- true when seconds is a whole number from 0 to MAX_LEAD
-    SetLead = function(seconds)
-        if not EspiUtils.IsWholeInRange(seconds, 0, MAX_LEAD) then
-            return false
-        end
-        settings.lead = seconds
-        UpdateReminder()
-        return true
-    end,
-    ResetPosition = function()
-        Tiles.Reset("rebuff")
-    end,
-    ResetDefaults = function()
-        EspiUtils.ApplyDefaults(settings, DEFAULTS, true)
-        Tiles.Lock()
-        Tiles.Reset("rebuff")
-        UpdateReminder()
+local rebuffOptions = {
+    key = "rebuff", command = "rebuff", label = "Rebuff",
+    defaults = DEFAULTS, maxLead = MAX_LEAD,
+    settings = function() return settings end,
+    update = UpdateReminder,
+    previewNote = ", for classes with tracked buffs",
+    statusExtra = function() return buffs and "" or " No buffs are tracked for this class." end,
+    preview = function()
+        if not buffs then return false end
+        CancelTimer()
+        ShowReminder("Preview")
+        timer = C_Timer.NewTimer(5, UpdateReminder)
     end,
 }
+EspiUtils.Rebuff = EspiUtils.NewBuffReminderAPI(rebuffOptions)
+EspiUtils.Rebuff.HasBuffs = function() return buffs ~= nil end
 
 function EspiUtils.HandleRebuffCommand(action, value)
-    local rebuff = EspiUtils.Rebuff
-    if not settings then return end
-    if action == "on" or action == "off" then
-        rebuff.SetEnabled(action == "on")
-        Print(settings.enabled and "Rebuff reminders enabled." or "Rebuff reminders disabled.")
-    elseif action == "lead" then
-        local seconds = tonumber(value)
-        if not rebuff.SetLead(seconds) then
-            Print(("Enter a whole number from 0 to %d. Use 0 for missing-buff reminders only."):format(MAX_LEAD))
-            return
-        end
-        Print(seconds == 0 and "Missing-buff reminders only." or ("Expiry warning set to %d seconds."):format(seconds))
-    elseif action == "move" then
-        EspiUtils.ToggleTileMove()
-    elseif action == "reset" then
-        rebuff.ResetPosition()
-        Print("Reminder position reset.")
-    elseif action == "" or action == "status" then
-        Print(("Rebuff reminders %s. Expiry warning: %s.%s"):format(
-            settings.enabled and "enabled" or "disabled",
-            settings.lead > 0 and ("%d seconds"):format(settings.lead) or "off",
-            buffs and "" or " No buffs are tracked for this class."
-        ))
-    else
-        Print("Use /espiutils rebuff [on | off | status | lead <seconds> | move | reset].")
-    end
+    EspiUtils.HandleBuffReminderCommand(rebuffOptions, action, value)
 end
 
 -- Events -------------------------------------------------------------------------
@@ -366,10 +332,15 @@ function EspiUtils.InitializeRebuff(store)
     events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
     for _, event in ipairs(UPDATE_EVENTS) do events:RegisterEvent(event) end
+    for _, event in ipairs(EspiUtils.VISIBILITY_EVENTS) do
+        pcall(events.RegisterEvent, events, event)
+    end
     if IsPlayerInWorld() then UpdateReminder() end
 end
 
 events:SetScript("OnEvent", function(_, event, unit)
+    -- Event order between frames isn't guaranteed, so set the flag here too.
+    EspiUtils.TrackCinematic(event)
     if event == "UNIT_AURA" then
         -- Only the player and group members matter; the rest of the world is noise.
         if settings.enabled and groupSet[unit] then Schedule() end

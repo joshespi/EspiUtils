@@ -17,6 +17,7 @@ read_globals = {
     "UnitClassBase", "UnitIsDeadOrGhost", "UnitName", "IsPlayerSpell", "IsSpellKnown",
     "IsInRaid", "IsInGroup", "GetNumGroupMembers", "UnitExists", "UnitIsConnected",
     "UnitIsVisible", "UnitInRange", "UnitIsUnit", "UnitPowerType", "date", "geterrorhandler",
+    "UnitIsAFK", "UnitOnTaxi","IsMounted", "IsInInstance", "GetAddOnMetadata",
     "hooksecurefunc", "issecretvalue", "strtrim", "tContains", "wipe",
     "ContainerFrame_AllowedToOpenBags", "ContainerFrame_GetContainerNumSlots",
     -- frames, mixins and constants

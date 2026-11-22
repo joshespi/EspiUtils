@@ -8,6 +8,10 @@ local wellFedName -- localized; nil until the spell data has loaded
 
 -- Return no state when the client cannot tell us whether Well Fed is active.
 function EspiUtils.GetFoodState()
+    -- Can't eat on a flight path.
+    if UnitOnTaxi and UnitOnTaxi("player") then
+        return
+    end
     if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then
         return
     end

@@ -65,36 +65,18 @@ EspiUtils.RegisterTile("food", reminder, detail, { "CENTER", "CENTER", 0, 155 },
 end)
 
 -- Food reminder API, shared by the slash command and the options screen.
-EspiUtils.Food = {
-    GetSettings = function() return settings end,
-    SetEnabled = function(enabled)
-        settings.enabled = enabled and true or false
-        UpdateReminder()
-    end,
-    SetHideResting = function(hide)
-        settings.hideResting = hide and true or false
-        UpdateReminder()
-    end,
-    MAX_LEAD = MAX_LEAD,
-    -- true when seconds is a whole number from 0 to MAX_LEAD
-    SetLead = function(seconds)
-        if not EspiUtils.IsWholeInRange(seconds, 0, MAX_LEAD) then
-            return false
-        end
-        settings.lead = seconds
-        UpdateReminder()
-        return true
-    end,
-    ResetPosition = function()
-        Tiles.Reset("food")
-    end,
-    ResetDefaults = function()
-        EspiUtils.ApplyDefaults(settings, FOOD_DEFAULTS, true)
-        Tiles.Lock()
-        EspiUtils.Food.ResetPosition()
-        UpdateReminder()
+local foodOptions = {
+    key = "food", command = "food", label = "Food",
+    defaults = FOOD_DEFAULTS, maxLead = MAX_LEAD,
+    settings = function() return settings end,
+    update = UpdateReminder,
+    preview = function()
+        CancelTimer()
+        ShowReminder("Preview")
+        timer = C_Timer.NewTimer(5, UpdateReminder)
     end,
 }
+EspiUtils.Food = EspiUtils.NewBuffReminderAPI(foodOptions)
 
 -- Modules ---------------------------------------------------------------------
 
@@ -204,14 +186,20 @@ local MODULE_ALIASES = {
 
 local function PrintHelp()
     Print("/espiutils (or /espi) options - open the settings")
-    Print("/espiutils food [on | off | status | lead <seconds> | move | reset]")
-    Print("/espiutils rebuff [on | off | status | lead <seconds> | move | reset]")
+    Print("/espiutils food [on | off | status | lead <seconds> | test | move | reset]")
+    Print("/espiutils rebuff [on | off | status | lead <seconds> | test | move | reset]")
     Print("/espiutils <posture|water> [on | off | status | interval <minutes> | test]")
     Print("/espiutils move [reset] - move and resize the reminders (shared by all characters)")
-    Print("/espiutils bags [sort | stop | preview | on | off | pin | log | debug | probe]")
+    Print("/espiutils bags [sort | stop | preview | on | off | pin | quest | log | debug | probe]")
     Print("/espiutils quests [on | off | status] - sort the quest tracker by level")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
+    Print("/espiutils version")
+end
+
+local function GetVersion()
+    local get = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+    return get and get(addonName, "Version") or "unknown"
 end
 
 -- Prints the outcome; returns whether the tiles are now unlocked.
@@ -239,30 +227,7 @@ local function HandleMove(action)
 end
 
 local function HandleFood(action, value)
-    local food = EspiUtils.Food
-    if action == "on" or action == "off" then
-        food.SetEnabled(action == "on")
-        Print(settings.enabled and "Food reminders enabled." or "Food reminders disabled.")
-    elseif action == "lead" then
-        local seconds = tonumber(value)
-        if not food.SetLead(seconds) then
-            Print(("Enter a whole number from 0 to %d. Use 0 for missing-buff reminders only."):format(MAX_LEAD))
-            return
-        end
-        Print(seconds == 0 and "Missing-buff reminders only." or ("Expiry warning set to %d seconds."):format(seconds))
-    elseif action == "move" then
-        EspiUtils.ToggleTileMove()
-    elseif action == "reset" then
-        food.ResetPosition()
-        Print("Reminder position reset.")
-    elseif action == "" or action == "status" then
-        Print(("Food reminders %s. Expiry warning: %s."):format(
-            settings.enabled and "enabled" or "disabled",
-            settings.lead > 0 and ("%d seconds"):format(settings.lead) or "off"
-        ))
-    else
-        Print("Use /espiutils to see the available commands.")
-    end
+    EspiUtils.HandleBuffReminderCommand(foodOptions, action, value)
 end
 
 SLASH_ESPIUTILS1 = "/espiutils"
@@ -284,6 +249,8 @@ SlashCmdList.ESPIUTILS = function(message)
         HandleMove(action)
     elseif command == "options" or command == "config" or command == "settings" then
         EspiUtils.OpenOptions()
+    elseif command == "version" then
+        Print("Version " .. GetVersion())
     elseif MODULE_ALIASES[command] then
         RunModule(MODULE_ALIASES[command], rest)
     elseif not EspiUtils.HandleTimedReminderCommand(command, action, value) then
@@ -360,6 +327,8 @@ events:SetScript("OnEvent", function(self, event, ...)
             account.tiles.food = { x = settings.x, y = settings.y }
         end
         settings.x, settings.y = nil, nil
+        account.general = type(account.general) == "table" and account.general or {}
+        EspiUtils.InitGeneral(account.general)
         EspiUtils.InitTiles(account.tiles)
         EspiUtils.InitializeTimedReminders(settings)
         if not xpcall(EspiUtils.InitializeRebuff, geterrorhandler(), settings) then
@@ -382,6 +351,13 @@ events:SetScript("OnEvent", function(self, event, ...)
         self:RegisterEvent("PLAYER_UNGHOST")
         self:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
         self:RegisterEvent("SPELL_DATA_LOAD_RESULT")
+        for _, event in ipairs(EspiUtils.VISIBILITY_EVENTS) do
+            pcall(self.RegisterEvent, self, event)
+        end
+        pcall(self.RegisterEvent, self, "PLAYER_CONTROL_LOST")
+        pcall(self.RegisterEvent, self, "PLAYER_CONTROL_GAINED")
+        -- Posture and water reminders wait while AFK.
+        pcall(self.RegisterUnitEvent, self, "PLAYER_FLAGS_CHANGED", "player")
         if C_Spell and C_Spell.RequestLoadSpellData then
             C_Spell.RequestLoadSpellData(EspiUtils.wellFedSpellID)
         end
@@ -407,6 +383,10 @@ events:SetScript("OnEvent", function(self, event, ...)
     else
         if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_DEAD" then
             Tiles.Lock()
+        end
+        EspiUtils.TrackCinematic(event)
+        if event == "PLAYER_ENTERING_WORLD" then
+            EspiUtils.SetCinematic(false)
         end
         EspiUtils.RefreshTimedReminders(event)
         if event == "PLAYER_REGEN_DISABLED" then

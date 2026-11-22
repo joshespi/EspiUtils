@@ -3,6 +3,7 @@ local Print = EspiUtils.Print
 
 local DISPLAY_SECONDS = 8
 local MAX_MINUTES = 180
+local SNOOZE_MINUTES = 5
 local definitions = {
     {
         command = "posture",
@@ -27,7 +28,9 @@ local function ValidMinutes(m)
     return EspiUtils.IsWholeInRange(m, 1, MAX_MINUTES)
 end
 
-local CanShow = EspiUtils.CanShowReminder
+local function CanShow()
+    return EspiUtils.CanShowReminder(true)
+end
 
 -- While the tiles are unlocked for moving they stay up until locked.
 local function Dismiss(reminder)
@@ -49,7 +52,7 @@ local function Show(reminder)
     end)
 end
 
-local Fire
+local Fire, Snooze
 
 local function Schedule(reminder, delay)
     reminder.intervalTimer = C_Timer.NewTimer(delay or reminder.settings.minutes * 60, function()
@@ -68,6 +71,13 @@ function Fire(reminder)
     reminder.settings.lastShown = GetServerTime()
     Show(reminder)
     Schedule(reminder)
+end
+
+-- Pushes the next reminder back by SNOOZE_MINUTES.
+function Snooze(reminder)
+    if reminder.intervalTimer then reminder.intervalTimer:Cancel() end
+    reminder.pending = false
+    Schedule(reminder, SNOOZE_MINUTES * 60)
 end
 
 -- resume keeps the saved clock (login); otherwise the interval starts over.
@@ -107,9 +117,15 @@ function EspiUtils.InitializeTimedReminders(settings)
 
         local reminder = { frame = frame, settings = saved, title = definition.title }
         reminders[definition.command] = reminder
+        -- Left-click dismisses the shown reminder; right-click also delays the next one.
         EspiUtils.RegisterTile(definition.command, frame, detail, { "TOP", "TOP", 0, definition.y }, function()
             detail:SetText(definition.detail)
             Dismiss(reminder)
+        end, function(button)
+            Dismiss(reminder)
+            if button == "RightButton" and reminder.settings.enabled then
+                Snooze(reminder)
+            end
         end)
         Restart(reminder, true)
     end
@@ -177,7 +193,7 @@ end
 -- Returns true when the preview was shown.
 function EspiUtils.TestTimedReminder(command)
     local reminder = reminders[command]
-    if not reminder or not CanShow() then return false end
+    if not reminder or not EspiUtils.CanPreviewReminder() then return false end
     Show(reminder)
     return true
 end

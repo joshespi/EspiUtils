@@ -5,6 +5,9 @@ local _, EspiUtils = ...
 -- works on both the retail and WoW Forever clients.
 
 local PAGE_WIDTH = 560
+local DISCORD_URL = "https://discord.gg/6QXzmaSjW"
+local GITHUB_ISSUES_URL = "https://github.com/joshespi/EspiUtils/issues"
+local BTC_ADDRESS = "bc1q3742790fs0xe93nlcj3e4ta5m0fenykkt5euqq"
 local pages = {}   -- key -> panel
 local ordered = {}
 
@@ -99,6 +102,23 @@ local function AddNumber(panel, label, tip, get, set)
     return box
 end
 
+-- A read-only box that selects its text on focus so it can be copied.
+local function AddCopyBox(panel, value, width)
+    local box = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+    box:SetSize(width, 20)
+    box:SetPoint("TOPLEFT", 22, panel.y)
+    box:SetAutoFocus(false)
+    local function reset() box:SetText(value) box:HighlightText() end
+    box:SetScript("OnEditFocusGained", reset)
+    box:SetScript("OnTextChanged", function(_, user) if user then reset() end end)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetText(value)
+    box:SetCursorPosition(0)
+    panel.y = panel.y - 30
+    return box
+end
+
 local function AddButtons(panel, specs)
     local x = 16
     for _, spec in ipairs(specs) do
@@ -146,7 +166,48 @@ local function BuildMain()
     local panel = NewPage("main", "Espi Utils")
     AddNote(panel, "Small quality-of-life tools. Pick a page on the left. Everything is also available from chat: /espiutils with no arguments lists the commands.")
     AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Quest Tracker\n- Mouseover Macros")
+    AddHeader(panel, "All reminders")
+    local general = EspiUtils.General
+    for _, c in ipairs({
+        { "sound", "Play a sound when a reminder appears", "Off by default." },
+        { "hideMounted", "Hide while mounted", "Reminders return when you dismount." },
+        { "hidePvP", "Hide in battlegrounds and arenas", nil },
+        { "timedHideInstances", "Hide posture and water reminders in instances", "Well Fed and rebuff reminders are not affected." },
+    }) do
+        local key = c[1]
+        AddCheck(panel, c[2], c[3],
+            function() return general.GetSettings()[key] end,
+            function(on) general.Set(key, on) end)
+    end
+    AddButtons(panel, {
+        { label = "Test sound", width = 110, onClick = general.PlaySound },
+        MOVE_BUTTON,
+        { label = "Reset all", width = 110,
+          tip = "Default settings for these options and default positions and sizes for every reminder.",
+          onClick = function()
+              general.Reset()
+              EspiUtils.Tiles.Reset()
+              EspiUtils.RefreshOptions()
+          end },
+    })
+    AddHeader(panel, "Feature requests and bug reports")
+    AddNote(panel, "Join the Discord (click the box, Ctrl+C to copy, paste into your browser):")
+    AddCopyBox(panel, DISCORD_URL, 300)
+    AddNote(panel, "Or report bugs on GitHub:")
+    AddCopyBox(panel, GITHUB_ISSUES_URL, 380)
+    AddHeader(panel, "Support the addon")
+    AddNote(panel, "Optional. Bitcoin (BTC) donation address:")
+    AddCopyBox(panel, BTC_ADDRESS, 380)
     return panel
+end
+
+-- Button spec that previews a Food or Rebuff reminder.
+local function PreviewButton(api)
+    return { label = "Preview", width = 90, onClick = function()
+        if not api.Preview() then
+            EspiUtils.Print("Preview available while alive and out of combat.")
+        end
+    end }
 end
 
 local function BuildFood()
@@ -164,6 +225,7 @@ local function BuildFood()
         function() return food.GetSettings().lead end,
         food.SetLead)
     AddButtons(panel, {
+        PreviewButton(food),
         MOVE_BUTTON,
         { label = "Reset position", tip = "Default position and size for the Well Fed reminder.",
           onClick = food.ResetPosition },
@@ -190,6 +252,7 @@ local function BuildRebuff()
         function() return rebuff.GetSettings().lead end,
         rebuff.SetLead)
     AddButtons(panel, {
+        PreviewButton(rebuff),
         MOVE_BUTTON,
         { label = "Reset position", tip = "Default position and size for the rebuff reminder.",
           onClick = rebuff.ResetPosition },
@@ -404,6 +467,11 @@ function EspiUtils.InitializeOptions()
     BuildQuests()
     BuildMouseover()
     Register(main)
+end
+
+-- Re-reads every page's controls after settings changed from outside the page.
+function EspiUtils.RefreshOptions()
+    for _, panel in pairs(pages) do RefreshPanel(panel) end
 end
 
 -- key: "main", "food", "rebuff", "timed", "bags", "keep", "quests" or "mouseover"
