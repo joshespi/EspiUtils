@@ -12,6 +12,7 @@ local defaults = {
     depositReagents = false, -- Clean Up at an open bank deposits crafting reagents first
     pinBound = true, -- bottom block (conjured, junk, bound gear) pinned to the last slots
     questToJunk = false, -- quest items sort with junk at the bottom
+    hearthFirst = false, -- Hearthstone always sorts to the first slot
     debug = false,   -- per-pass detail in chat and the log
 }
 
@@ -31,8 +32,9 @@ local function Say(msg)
     Print(msg)
 end
 
-local function Debug(msg)
-    if db.debug then Say(msg) end
+-- Formats only when debug is on, so per-move calls cost nothing otherwise.
+local function Debug(fmt, ...)
+    if db.debug then Say(fmt:format(...)) end
 end
 
 local frame = CreateFrame("Frame")
@@ -40,10 +42,11 @@ local frame = CreateFrame("Frame")
 -- Classification ------------------------------------------------------------
 
 -- Section indices determine layout order. Pinned sections go in the last slots.
-local CAMPING, TOOLS, SETGEAR, TOYGEAR, HEIRLOOM, OTHER, BOE, CONJURED, JUNK, BOUND =
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+local HEARTH, CAMPING, TOOLS, SETGEAR, TOYGEAR, HEIRLOOM, OTHER, BOE, CONJURED, JUNK, BOUND =
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
 
 local SECTIONS = {
+    [HEARTH] = { name = "Hearthstone" },
     [CAMPING] = { name = "Camping" },
     [TOOLS] = { name = "Tools" },
     [SETGEAR] = { name = "SetGear" },
@@ -55,6 +58,8 @@ local SECTIONS = {
     [JUNK] = { name = "Junk", pinned = true },
     [BOUND] = { name = "Bound", pinned = true },
 }
+
+local HEARTHSTONE_ID = 6948
 
 -- WoW Forever campfire kits and camp features:
 -- https://www.wowhead.com/forever/guide/camping-overview-unlock-rewards
@@ -244,7 +249,9 @@ local function Classify(bag, slot, info, sets, general)
         maxStack = static.maxStack, family = static.family or 0,
     }
 
-    if CAMPING_IDS[itemID] then
+    if db.hearthFirst and itemID == HEARTHSTONE_ID then
+        rec.section = HEARTH
+    elseif CAMPING_IDS[itemID] then
         rec.section = CAMPING
     elseif IsTool(itemID, classID, subClassID) then
         rec.section = TOOLS
@@ -565,8 +572,8 @@ local function OrderRegion(region, recs)
                 if not ok then return moves, err end
                 moves = moves + 1
                 used[i], used[j] = true, true
-                Debug(("  move %d->%d: %s [sec %d, set %d, ilvl %d] (had %s)"):format(
-                    j, i, want.link, want.section, want.setRank, want.ilvl, have and have.link or "empty"))
+                Debug("  move %d->%d: %s [sec %d, set %d, ilvl %d] (had %s)",
+                    j, i, want.link, want.section, want.setRank, want.ilvl, have and have.link or "empty")
             end
         end
     end
@@ -642,7 +649,7 @@ local function Step()
     end
     if merged > 0 then -- let the merges land, then re-snapshot
         run.merges = run.merges + merged
-        Debug(("pass %d: %d merges"):format(run.passes, merged))
+        Debug("pass %d: %d merges", run.passes, merged)
         return
     end
 
@@ -650,7 +657,7 @@ local function Step()
     if ferr then return Stop(ferr) end
     if filled > 0 then -- let the moves land, then re-snapshot
         run.moves = run.moves + filled
-        Debug(("pass %d: %d items to reagent/profession bags"):format(run.passes, filled))
+        Debug("pass %d: %d items to reagent/profession bags", run.passes, filled)
         return
     end
 
@@ -663,7 +670,7 @@ local function Step()
     -- no moves issued: anything still out of place is a locked item
     if moved == 0 then return Done(stuck) end
     run.moves = run.moves + moved
-    Debug(("pass %d: %d moves"):format(run.passes, moved))
+    Debug("pass %d: %d moves", run.passes, moved)
 end
 
 local function Tick()
@@ -917,6 +924,7 @@ local HELP = {
     "/espiutils bags off - Clean Up button uses Blizzard's sort",
     "/espiutils bags pin - toggle conjured, junk and bound gear pinned to the last slots",
     "/espiutils bags quest - toggle sorting quest items with junk",
+    "/espiutils bags hearth - toggle Hearthstone always in the first slot",
     ("/espiutils bags log - show the last %d log lines"):format(LOG_SHOW),
     "/espiutils bags debug - toggle per-pass detail in chat and the log",
     "Shift-click Clean Up for Blizzard's sort",
@@ -941,6 +949,9 @@ function EspiUtils.HandleBagsCommand(msg)
     elseif cmd == "quest" then
         db.questToJunk = not db.questToJunk
         Print(db.questToJunk and "quest items sort with junk" or "quest items sort in Other")
+    elseif cmd == "hearth" then
+        db.hearthFirst = not db.hearthFirst
+        Print(db.hearthFirst and "Hearthstone sorts to the first slot" or "Hearthstone sorts like any other item")
     elseif cmd == "debug" then
         db.debug = not db.debug
         Print("debug " .. (db.debug and "on" or "off"))

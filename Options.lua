@@ -201,36 +201,40 @@ local function BuildMain()
     return panel
 end
 
--- Button spec that previews a Food or Rebuff reminder.
-local function PreviewButton(api)
-    return { label = "Preview", width = 90, onClick = function()
-        if not api.Preview() then
+-- Button spec that runs a preview function; false means it couldn't show.
+local function PreviewButton(preview)
+    return { label = "Preview", onClick = function()
+        if not preview() then
             EspiUtils.Print("Preview available while alive and out of combat.")
         end
     end }
 end
 
+-- Shared page body for the Food and Rebuff reminders.
+local function AddBuffControls(panel, api, enableLabel, resetTip)
+    AddCheck(panel, enableLabel, nil,
+        function() return api.GetSettings().enabled end,
+        api.SetEnabled)
+    AddCheck(panel, "Hide in rested areas", "Hide the reminder in cities and inns.",
+        function() return api.GetSettings().hideResting end,
+        api.SetHideResting)
+    AddNumber(panel, "Expiry warning (seconds, 0 = missing only)",
+        ("Whole number from 0 to %d."):format(api.MAX_LEAD),
+        function() return api.GetSettings().lead end,
+        api.SetLead)
+    AddButtons(panel, {
+        PreviewButton(api.Preview),
+        MOVE_BUTTON,
+        { label = "Reset position", tip = resetTip, onClick = api.ResetPosition },
+    })
+    AddDefaults(panel, api.ResetDefaults)
+end
+
 local function BuildFood()
     local panel = NewPage("food", "Food Reminder", true)
     AddNote(panel, "Shows a reminder when the Well Fed buff is missing or about to run out.")
-    local food = EspiUtils.Food
-    AddCheck(panel, "Enable food reminder", nil,
-        function() return food.GetSettings().enabled end,
-        food.SetEnabled)
-    AddCheck(panel, "Hide in rested areas", "Hide the reminder in cities and inns.",
-        function() return food.GetSettings().hideResting end,
-        food.SetHideResting)
-    AddNumber(panel, "Expiry warning (seconds, 0 = missing only)",
-        ("Whole number from 0 to %d."):format(food.MAX_LEAD),
-        function() return food.GetSettings().lead end,
-        food.SetLead)
-    AddButtons(panel, {
-        PreviewButton(food),
-        MOVE_BUTTON,
-        { label = "Reset position", tip = "Default position and size for the Well Fed reminder.",
-          onClick = food.ResetPosition },
-    })
-    AddDefaults(panel, food.ResetDefaults)
+    AddBuffControls(panel, EspiUtils.Food, "Enable food reminder",
+        "Default position and size for the Well Fed reminder.")
 end
 
 local function BuildRebuff()
@@ -241,23 +245,8 @@ local function BuildRebuff()
         AddNote(panel, "No buffs are tracked for this character's class.")
         return
     end
-    AddCheck(panel, "Enable rebuff reminder", nil,
-        function() return rebuff.GetSettings().enabled end,
-        rebuff.SetEnabled)
-    AddCheck(panel, "Hide in rested areas", "Hide the reminder in cities and inns.",
-        function() return rebuff.GetSettings().hideResting end,
-        rebuff.SetHideResting)
-    AddNumber(panel, "Expiry warning (seconds, 0 = missing only)",
-        ("Whole number from 0 to %d."):format(rebuff.MAX_LEAD),
-        function() return rebuff.GetSettings().lead end,
-        rebuff.SetLead)
-    AddButtons(panel, {
-        PreviewButton(rebuff),
-        MOVE_BUTTON,
-        { label = "Reset position", tip = "Default position and size for the rebuff reminder.",
-          onClick = rebuff.ResetPosition },
-    })
-    AddDefaults(panel, rebuff.ResetDefaults)
+    AddBuffControls(panel, rebuff, "Enable rebuff reminder",
+        "Default position and size for the rebuff reminder.")
 end
 
 local function BuildTimed()
@@ -274,11 +263,7 @@ local function BuildTimed()
             function() local s = EspiUtils.GetTimedReminder(command) return s and s.minutes end,
             function(v) return EspiUtils.SetTimedReminderMinutes(command, v) end)
         AddButtons(panel, {
-            { label = "Preview", onClick = function()
-                if not EspiUtils.TestTimedReminder(command) then
-                    EspiUtils.Print("Preview available while alive and out of combat.")
-                end
-            end },
+            PreviewButton(function() return EspiUtils.TestTimedReminder(command) end),
         })
     end
     AddHeader(panel, "Position")
@@ -304,6 +289,7 @@ local function BuildBags()
         { "depositReagents", "Deposit reagents when the bank is open", "Clean Up first sends crafting reagents to the bank, then sorts the rest." },
         { "pinBound", "Pin conjured, junk and bound gear to the last slots", "Off: they are packed right after BoE gear." },
         { "questToJunk", "Sort quest items with junk", "Quest items go to the bottom with grey items (follows the pin setting above)." },
+        { "hearthFirst", "Always sort Hearthstone first", "The standard Hearthstone takes the first bag slot (toy hearthstones sort normally)." },
         { "debug", "Debug output", "Per-pass detail in chat and the log." },
     }) do
         local key = c[1]
