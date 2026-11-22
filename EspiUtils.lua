@@ -351,8 +351,8 @@ events:SetScript("OnEvent", function(self, event, ...)
         self:RegisterEvent("PLAYER_UNGHOST")
         self:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
         self:RegisterEvent("SPELL_DATA_LOAD_RESULT")
-        for _, event in ipairs(EspiUtils.VISIBILITY_EVENTS) do
-            pcall(self.RegisterEvent, self, event)
+        for _, visibilityEvent in ipairs(EspiUtils.VISIBILITY_EVENTS) do
+            pcall(self.RegisterEvent, self, visibilityEvent)
         end
         pcall(self.RegisterEvent, self, "PLAYER_CONTROL_LOST")
         pcall(self.RegisterEvent, self, "PLAYER_CONTROL_GAINED")
