@@ -52,7 +52,7 @@ local function Show(reminder)
     end)
 end
 
-local Fire, Snooze
+local Fire
 
 local function Schedule(reminder, delay)
     reminder.intervalTimer = C_Timer.NewTimer(delay or reminder.settings.minutes * 60, function()
@@ -74,7 +74,7 @@ function Fire(reminder)
 end
 
 -- Pushes the next reminder back by SNOOZE_MINUTES.
-function Snooze(reminder)
+local function Snooze(reminder)
     if reminder.intervalTimer then reminder.intervalTimer:Cancel() end
     reminder.pending = false
     Schedule(reminder, SNOOZE_MINUTES * 60)

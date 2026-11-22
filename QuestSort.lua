@@ -14,8 +14,8 @@ local MAX_PASSES = 3
 
 local CQ = C_QuestLog
 
--- Quest watches as { id, level, title, key }. id is the quest ID (or log index on
--- clients without quest IDs in the watch API); key is what Add/RemoveQuestWatch take.
+-- Quest watches as { key, level, title }. key is the quest ID (or log index on
+-- clients without quest IDs in the watch API); it is what Add/RemoveQuestWatch take.
 local function ReadWatches()
     local list = {}
     if CQ and CQ.GetNumQuestWatches and CQ.GetQuestIDForQuestWatchIndex and CQ.GetLogIndexForQuestID and CQ.GetInfo then
@@ -99,7 +99,7 @@ local function SortNow()
 end
 
 local function Schedule()
-    if scheduled or sorting or not db or not db.enabled then return end
+    if scheduled or sorting or not db.enabled then return end
     scheduled = true
     C_Timer.After(0, SortNow)
 end
