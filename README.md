@@ -20,9 +20,13 @@ Shows a reminder when a buff your class maintains is missing or about to expire:
 
 ### Timed reminders
 
-Posture and water reminders that show for a few seconds at an interval, once you are alive and out of combat.
+Posture and water reminders that show for a few seconds at an interval, once you are alive and out of combat. Click a shown reminder to dismiss it; right-click to dismiss it and delay the next one by 5 minutes. They wait while you are AFK, and all reminders wait during cinematics.
 
 `/espiutils <posture|water> [on | off | status | interval <minutes> | test]`
+
+### Reminder options
+
+On the main settings page: play a sound when a reminder appears, hide reminders while mounted, hide them in battlegrounds and arenas, and hide the posture and water reminders in instances. All are off by default. `/espiutils food test` and `/espiutils rebuff test` preview a reminder for a few seconds; `/espiutils version` prints the version.
 
 ### Moving and resizing reminders
 

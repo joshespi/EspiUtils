@@ -1,5 +1,19 @@
 ﻿# Changelog
 
+## 1.2.1
+
+- New "All reminders" options on the main page: play a sound when a reminder appears (off by default), hide while mounted, hide in battlegrounds and arenas, and hide the posture and water reminders in instances. All off by default.
+- Preview button on the Food Reminder and Class Rebuff pages, and `/espiutils food test` and `/espiutils rebuff test`.
+- Reminders fade in instead of popping up.
+- Click a shown posture or water reminder to dismiss it; right-click dismisses it and delays the next one by 5 minutes.
+- Reminders wait during cinematics and movies, and posture and water reminders wait while you are AFK.
+- The rebuff reminder shows the icon of the buff it is about.
+- Food and rebuff reminders share their settings and command code.
+- "Reset all" on the main page restores those options and every reminder position.
+- `/espiutils version`. The help list now includes `bags quest`.
+- Reminders sit below the world map and other full-screen panels.
+- The settings main page has Discord and Bitcoin donation boxes you can copy from.
+
 ## 1.2.0
 
 - The Mouseover Macros page lists each spell as a row with an X to remove it and a button to switch friendly/hostile. Enter in the box adds a spell as friendly.
