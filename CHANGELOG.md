@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.3.0
+
+- Bag Rules has a new option, "Always sort Hearthstone first" (off by default; `/espiutils bags hearth`).
+
 ## 1.2.1
 
 - New "All reminders" options on the main page: play a sound when a reminder appears (off by default), hide while mounted, hide in battlegrounds and arenas, and hide the posture and water reminders in instances. All off by default.
