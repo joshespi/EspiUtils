@@ -328,8 +328,8 @@ local function AddBagOrder(panel, bags)
             -- the gap between groups belongs to the group above; the last takes the rest
             if offset >= group.start and (offset <= group.finish + groupGap or position == #sides) then
                 local index = 1
-                for position, section in ipairs(order[side]) do
-                    local rowTop = group.start + headerHeight + (position - 1) * rowHeight
+                for slot, section in ipairs(order[side]) do
+                    local rowTop = group.start + headerHeight + (slot - 1) * rowHeight
                     if section ~= dragged.section then
                         if offset < rowTop + rowHeight / 2 then return side, index, rowTop end
                         index = index + 1
