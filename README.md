@@ -34,22 +34,15 @@ On the main settings page: play a sound when a reminder appears, hide reminders 
 
 ### Bag Rules
 
-A custom Clean Up. Your general bags are sorted, in on-screen order, into:
+Bag Rules lets you drag item groups within and between **Top** and **Bottom**. Top starts in the first slot of your general bags and Bottom ends in the last slot. Both follow the list order, with empty slots between them. The order is shared across characters.
 
-1. **Camping**: WoW Forever campfire kits and camp features, the Cozy Sleeping Bag, the Pouch of Violet Dust.
-2. **Tools**: profession and rogue tools, fishing poles, enchanting rods.
-3. **Set gear**: one block per equipment set, ordered by assigned spec, pieces in paperdoll order.
-4. **Toy gear**: gear kept for its Use effect (guild teleport cloaks).
-5. **Heirloom**: heirloom gear not in a set.
-6. **Other**: everything else by type, quality, item level and name.
-7. **BoE**: gear you can still trade or send to an alt (unbound, Warbound, Warbound until equipped).
-8. Conjured, then Junk, then Bound gear, pinned to the last slots. With "Sort quest items with junk" on, quest items go at the very end, after the grey items.
+By default, Top contains Hearthstone (off by default), Camping, Tools, Equipment Sets, Use-Effect Gear, Heirlooms, Other, and Tradeable Gear. Bottom contains Conjured, Junk, and Bound Gear. Use a row's checkbox to turn its group on or off. "Sort quest items with junk" puts quest items after grey items in the Junk group. Preview shows counts in the saved order.
 
 Partial stacks are merged, the reagent and profession bags sort within themselves, and bags set to "Ignore this bag" are left alone. Shift-click Clean Up for Blizzard's sort.
 
-`/espiutils bags [sort | stop | preview | on | off | pin | quest | hearth | camping | tools | sets | toys | heirloom | conjured | bound | junk | log | debug | probe]`
+`/espiutils bags [sort | stop | preview | on | off | quest | hearth | camping | tools | sets | toys | heirloom | conjured | bound | junk | log | debug | probe]`
 
-Each section above can be switched off on the Bag Rules page or with its command (`camping`, `tools`, `sets`, `toys`, `heirloom`, `conjured`, `bound`, `junk`).
+Each group can be switched off with its checkbox on the Bag Rules page or with its command (`camping`, `tools`, `sets`, `toys`, `heirloom`, `conjured`, `bound`, `junk`).
 
 `/bagrules` and `/brules` still work. The log keeps the last 200 lines in the saved variables, written on `/reload` or logout.
 
