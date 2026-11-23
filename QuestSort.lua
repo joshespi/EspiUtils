@@ -49,6 +49,40 @@ local function Remove(key)
     return RemoveQuestWatch(key)
 end
 
+-- Green and grey quests are 3 or more levels below the player (yellow starts at -2).
+local function IsEasy(q)
+    local level = q.level
+    if CQ and CQ.GetQuestDifficultyLevel and type(q.key) == "number" then
+        level = CQ.GetQuestDifficultyLevel(q.key) or level
+    end
+    return level > 0 and level - UnitLevel("player") <= -3
+end
+
+local function KeepEasy()
+    if InCombatLockdown() then
+        Print("can't change the tracker in combat.")
+        return
+    end
+    local removed, kept = 0, 0
+    sorting = true
+    local ok, err = pcall(function()
+        for _, q in ipairs(ReadWatches()) do
+            if IsEasy(q) then
+                kept = kept + 1
+            else
+                Remove(q.key)
+                removed = removed + 1
+            end
+        end
+    end)
+    sorting = false
+    if not ok then
+        Print("couldn't update the tracker: " .. tostring(err))
+        return
+    end
+    Print(("untracked %d quest(s), kept %d green or grey."):format(removed, kept))
+end
+
 local function Less(a, b)
     if a.level ~= b.level then return a.level < b.level end
     if a.title ~= b.title then return a.title < b.title end
@@ -136,6 +170,7 @@ end
 EspiUtils.QuestSort = {
     GetSettings = function() return db end,
     SetEnabled = SetEnabled,
+    KeepEasy = KeepEasy,
 }
 
 function EspiUtils.HandleQuestSortCommand(action)
@@ -148,9 +183,11 @@ function EspiUtils.HandleQuestSortCommand(action)
         SetEnabled(false)
     elseif action == "status" then
         Print(db.enabled and "on." or "off.")
+    elseif action == "keepeasy" then
+        KeepEasy()
     elseif action == "config" or action == "options" then
         EspiUtils.OpenOptions("quests")
     else
-        Print("/espiutils quests [on | off | status] (no argument toggles)")
+        Print("/espiutils quests [on | off | status | keepeasy] (no argument toggles)")
     end
 end
