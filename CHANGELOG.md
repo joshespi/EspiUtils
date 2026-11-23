@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## Unreleased
+
+- New "Bewsh" level-up notification: a tile says you bewshed instead of ding, with the story on hover. Optional `bewsh (<level>)` post to guild and/or party (off by default). Settings on the new Bewsh page or `/espiutils bewsh [on | off | status | guild | party | test | story]`.
+
 ## 1.5.0
 
 - Bag Rules sections can be dragged into any order on the Bag Rules page. This replaces the "pin" option and the `/espiutils bags pin` command.

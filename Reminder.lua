@@ -57,6 +57,10 @@ function EspiUtils.SetCinematic(on)
     cinematic = on and true or false
 end
 
+function EspiUtils.IsCinematic()
+    return cinematic
+end
+
 -- Updates the flag from a cinematic or movie event; ignores other events.
 function EspiUtils.TrackCinematic(event)
     if event == "CINEMATIC_START" or event == "PLAY_MOVIE" then

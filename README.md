@@ -71,6 +71,14 @@ Keeps a character macro named `MO <spell>` for each spell in a per-class list:
 
 Typed spell names are matched against your spellbook and near-misses are corrected. On the settings page, "Pick spells" lists your spellbook with Friendly and Hostile buttons; or type spells and press Enter (friendly) or use the Add buttons; each listed spell has an X to remove it and a button to switch it between friendly and hostile.
 
+### Bewsh
+
+Everyone says "ding" when they level, a habit from the EverQuest days. Back in vanilla WoW, Espi joked that it's really more of a "boosh" noise, and it stuck. Bewsh is that word, spelled the way it sounds.
+
+When you level up, a "Bewsh!" tile tells you that you bewshed (hover over it for the story; click to dismiss). Optionally post `bewsh (<level>)` to guild chat, group chat, or both. Group posts go to your party or raid, or to instance chat if you only have a matchmaking group. Both chat options are off by default. If combat locks chat, posts wait until combat ends.
+
+`/espiutils bewsh [on | off | status | guild | party | test | story]` (`/espiutils boosh` works too).
+
 ## Install
 
 Copy the `EspiUtils` folder into `_retail_/Interface/AddOns/` (or the Forever equivalent).

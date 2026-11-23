@@ -194,6 +194,7 @@ local function PrintHelp()
     Print("/espiutils quests [on | off | status] - sort the quest tracker by level")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
+    Print("/espiutils bewsh (or boosh) [on | off | status | guild | party | test | story] - level-up notification")
     Print("/espiutils version")
 end
 
@@ -247,6 +248,8 @@ SlashCmdList.ESPIUTILS = function(message)
         EspiUtils.HandleRebuffCommand(action, value)
     elseif command == "move" then
         HandleMove(action)
+    elseif command == "bewsh" or command == "boosh" then
+        EspiUtils.HandleBewshCommand(action)
     elseif command == "options" or command == "config" or command == "settings" then
         EspiUtils.OpenOptions()
     elseif command == "version" then
@@ -339,6 +342,7 @@ events:SetScript("OnEvent", function(self, event, ...)
         InitModule("keep", EspiUtils.InitKeepBagsOpen, settings)
         xpcall(EspiUtils.InitializeQuestSort, geterrorhandler(), settings)
         InitModule("mouseover", EspiUtils.InitMouseover, account)
+        xpcall(EspiUtils.InitializeBewsh, geterrorhandler(), account)
         xpcall(EspiUtils.InitializeOptions, geterrorhandler())
 
         self:RegisterUnitEvent("UNIT_AURA", "player")

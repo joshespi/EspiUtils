@@ -168,7 +168,7 @@ local MOVE_BUTTON = {
 local function BuildMain()
     local panel = NewPage("main", "Espi Utils")
     AddNote(panel, "Small quality-of-life tools. Pick a page on the left. Everything is also available from chat: /espiutils with no arguments lists the commands.")
-    AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Quest Tracker\n- Mouseover Macros")
+    AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Quest Tracker\n- Mouseover Macros\n- Bewsh (level-up notification)")
     AddHeader(panel, "All reminders")
     local general = EspiUtils.General
     for _, c in ipairs({
@@ -213,6 +213,15 @@ local function PreviewButton(preview)
     end }
 end
 
+local function AddReminderActions(panel, api, resetTip)
+    AddButtons(panel, {
+        PreviewButton(api.Preview),
+        MOVE_BUTTON,
+        { label = "Reset position", tip = resetTip, onClick = api.ResetPosition },
+    })
+    AddDefaults(panel, api.ResetDefaults)
+end
+
 -- Shared page body for the Food and Rebuff reminders.
 local function AddBuffControls(panel, api, enableLabel, resetTip)
     AddCheck(panel, enableLabel, nil,
@@ -225,12 +234,7 @@ local function AddBuffControls(panel, api, enableLabel, resetTip)
         ("Whole number from 0 to %d."):format(api.MAX_LEAD),
         function() return api.GetSettings().lead end,
         api.SetLead)
-    AddButtons(panel, {
-        PreviewButton(api.Preview),
-        MOVE_BUTTON,
-        { label = "Reset position", tip = resetTip, onClick = api.ResetPosition },
-    })
-    AddDefaults(panel, api.ResetDefaults)
+    AddReminderActions(panel, api, resetTip)
 end
 
 local function BuildFood()
@@ -498,6 +502,24 @@ local function BuildQuests()
     AddDefaults(panel, function() qs.SetEnabled(false) end)
 end
 
+local function BuildBewsh()
+    local panel = NewPage("bewsh", "Bewsh (Level Up)", true)
+    local bewsh = EspiUtils.Bewsh
+    AddNote(panel, "Shows \"You bewshed!\" when you level up. Hover over it for the story.")
+    AddNote(panel, "|cffffd100Why bewsh?|r " .. bewsh.Story)
+    for _, c in ipairs({
+        { "enabled", "Enable Bewsh on level up", "Turns on the tile and any chat posts you select below." },
+        { "guild", "Post \"bewsh\" to guild (needs Enable)", "Sends \"bewsh (<level>)\" to guild chat instead of you typing ding." },
+        { "party", "Post \"bewsh\" to group chat (needs Enable)", "Sends \"bewsh (<level>)\" to your party or raid, or to instance chat if you only have a matchmaking group. If chat is locked, it is sent after combat." },
+    }) do
+        local key = c[1]
+        AddCheck(panel, c[2], c[3],
+            function() return bewsh.GetSettings()[key] end,
+            function(on) bewsh.Set(key, on) end)
+    end
+    AddReminderActions(panel, bewsh, "Default position and size for the Bewsh tile.")
+end
+
 local function BuildMouseover()
     local panel = NewPage("mouseover", "Mouseover Macros", true)
     AddNote(panel, "Keeps a mouseover cast macro (named \"MO <spell>\") for each spell in this class's list. The list is shared by your characters of the same class; macros are per character. Changes made in combat apply when it ends.")
@@ -716,6 +738,7 @@ function EspiUtils.InitializeOptions()
     BuildKeep()
     BuildQuests()
     BuildMouseover()
+    BuildBewsh()
     Register(main)
     -- Fill every control now so a page never starts blank.
     EspiUtils.RefreshOptions()
@@ -726,7 +749,7 @@ function EspiUtils.RefreshOptions()
     for _, panel in pairs(pages) do RefreshPanel(panel) end
 end
 
--- key: "main", "food", "rebuff", "timed", "bags", "keep", "quests" or "mouseover"
+-- key: "main", "food", "rebuff", "timed", "bags", "keep", "quests", "mouseover" or "bewsh"
 function EspiUtils.OpenOptions(key)
     local panel = pages[key or "main"] or pages.main
     if not panel then return end
