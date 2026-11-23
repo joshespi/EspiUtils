@@ -27,6 +27,8 @@ end
 
 local MAX_BAG = NUM_TOTAL_BAG_FRAMES or NUM_BAG_FRAMES
 
+local REAGENT_ID = Enum.BagIndex.ReagentBag
+
 -- Same order as OpenAllBags so frames land where Blizzard puts them.
 -- Callers only read the list, so both variants are built once and reused
 -- (this runs on every bag update).
@@ -35,7 +37,9 @@ local function TrackedIDs()
     if not baseIDs then
         baseIDs = {}
         for id = BACKPACK_CONTAINER, MAX_BAG do
-            baseIDs[#baseIDs + 1] = id
+            if id ~= REAGENT_ID or db.reagent then
+                baseIDs[#baseIDs + 1] = id
+            end
         end
     end
     local key = KeyringID()
@@ -344,9 +348,23 @@ local function SetEnabled(on)
     PrintStatus()
 end
 
+local function SetReagent(on)
+    db.reagent = on and true or false
+    baseIDs, keyringIDs = nil, nil
+    if not db.reagent then
+        -- Stop wanting it; leave it open or closed as it is now.
+        for _, list in ipairs({ db.want, deferred or {} }) do
+            for i = #list, 1, -1 do
+                if list[i] == REAGENT_ID then table.remove(list, i) end
+            end
+        end
+    end
+end
+
 EspiUtils.Keep = {
     GetSettings = function() return db end,
     SetEnabled = SetEnabled,
+    SetReagent = SetReagent,
 }
 
 -- Everything but this setup is registered after db exists, so nothing else
@@ -365,7 +383,7 @@ end)
 
 function EspiUtils.InitKeepBagsOpen(settings)
     db = settings
-    EspiUtils.ApplyDefaults(db, { enabled = true })
+    EspiUtils.ApplyDefaults(db, { enabled = true, reagent = true })
     db.want = db.want or {}
     db.blocked = db.blocked or {}
     HookAll()
