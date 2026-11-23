@@ -157,8 +157,9 @@ local function resolveSpell(text)
         if #hits == 1 then return hits[1] end
         if #hits > 1 then return nil, hits end
     end
-    local hit, amb = unique(function(n) return n == lower end)
+    local hit = unique(function(n) return n == lower end)
     if hit then return hit end
+    local amb
     hit, amb = unique(function(n) return n:sub(1, #lower) == lower end)
     if hit or amb then return hit, amb end
     hit, amb = unique(function(n) return n:find(lower, 1, true) ~= nil end)
