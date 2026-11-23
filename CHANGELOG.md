@@ -1,6 +1,6 @@
 ﻿# Changelog
 
-## Unreleased
+## 1.6.0
 
 - New "Bewsh" level-up notification: a tile says you bewshed instead of ding, with the story on hover. Optional `bewsh (<level>)` post to guild and/or party (off by default). Settings on the new Bewsh page or `/espiutils bewsh [on | off | status | guild | party | test | story]`.
 
