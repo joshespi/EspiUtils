@@ -390,7 +390,7 @@ local function BuildMouseover()
         picker:SetScript("OnDragStart", picker.StartMoving)
         picker:SetScript("OnDragStop", picker.StopMovingOrSizing)
         picker.TitleText:SetText("Pick spells")
-        tinsert(UISpecialFrames, "EspiUtilsSpellPicker")
+        table.insert(UISpecialFrames, "EspiUtilsSpellPicker")
         _G.EspiUtilsSpellPicker = picker
 
         local search = CreateFrame("EditBox", nil, picker, "InputBoxTemplate")
