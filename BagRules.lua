@@ -13,6 +13,14 @@ local defaults = {
     pinBound = true, -- bottom block (conjured, junk, bound gear) pinned to the last slots
     questToJunk = false, -- quest items sort with junk at the bottom
     hearthFirst = false, -- Hearthstone always sorts to the first slot
+    camping = true,  -- camping items get their own section at the front
+    tools = true,    -- profession and rogue tools get their own section
+    setGear = true,  -- equipment-set gear is grouped together
+    toyGear = true,  -- use-effect gear sorts like a toy
+    heirloom = true, -- heirlooms get their own section
+    conjured = true, -- conjured items sort in the bottom block
+    splitBound = true, -- bound gear separate from tradeable (BoE) gear
+    junk = true,     -- grey items sort in the bottom block
     debug = false,   -- per-pass detail in chat and the log
 }
 
@@ -251,31 +259,32 @@ local function Classify(bag, slot, info, sets, general)
 
     if db.hearthFirst and itemID == HEARTHSTONE_ID then
         rec.section = HEARTH
-    elseif CAMPING_IDS[itemID] then
+    elseif db.camping and CAMPING_IDS[itemID] then
         rec.section = CAMPING
-    elseif IsTool(itemID, classID, subClassID) then
+    elseif db.tools and IsTool(itemID, classID, subClassID) then
         rec.section = TOOLS
-    elseif quality == Enum.ItemQuality.Poor then
+    elseif db.junk and quality == Enum.ItemQuality.Poor then
         rec.section = JUNK
-    elseif db.questToJunk and IsQuestItem(bag, slot, classID) then
+    elseif db.junk and db.questToJunk and IsQuestItem(bag, slot, classID) then
         rec.section = JUNK
         rec.quest = true -- sorts after the grey items
     elseif not general then
         rec.section = OTHER
-    elseif TOYGEAR_IDS[itemID] then
+    elseif db.toyGear and TOYGEAR_IDS[itemID] then
         rec.section = TOYGEAR
-    elseif IsConjured(bag, slot, itemID) then
+    elseif db.conjured and IsConjured(bag, slot, itemID) then
         rec.section = CONJURED
     elseif not gear then
         rec.section = OTHER
     else
-        local inSet, setList = C_Container.GetContainerItemEquipmentSetInfo(bag, slot)
+        local inSet, setList
+        if db.setGear then inSet, setList = C_Container.GetContainerItemEquipmentSetInfo(bag, slot) end
         if inSet then
             rec.section = SETGEAR
             rec.setRank = SetRank(setList or "", sets)
-        elseif quality == Enum.ItemQuality.Heirloom then
+        elseif db.heirloom and quality == Enum.ItemQuality.Heirloom then
             rec.section = HEIRLOOM
-        elseif IsTradeable(info, static, loc) then
+        elseif not db.splitBound or IsTradeable(info, static, loc) then
             rec.section = BOE
         else
             rec.section = BOUND
@@ -925,9 +934,22 @@ local HELP = {
     "/espiutils bags pin - toggle conjured, junk and bound gear pinned to the last slots",
     "/espiutils bags quest - toggle sorting quest items with junk",
     "/espiutils bags hearth - toggle Hearthstone always in the first slot",
+    "/espiutils bags camping | tools | sets | toys | heirloom | conjured | bound | junk - toggle that rule",
     ("/espiutils bags log - show the last %d log lines"):format(LOG_SHOW),
     "/espiutils bags debug - toggle per-pass detail in chat and the log",
     "Shift-click Clean Up for Blizzard's sort",
+}
+
+-- command word -> { setting, description }
+local TOGGLES = {
+    camping = { "camping", "camping items in their own section" },
+    tools = { "tools", "tools in their own section" },
+    sets = { "setGear", "equipment-set gear grouped together" },
+    toys = { "toyGear", "use-effect gear sorted like a toy" },
+    heirloom = { "heirloom", "heirlooms in their own section" },
+    conjured = { "conjured", "conjured items in the bottom block" },
+    bound = { "splitBound", "bound gear separate from tradeable gear" },
+    junk = { "junk", "grey items in the bottom block" },
 }
 
 function EspiUtils.HandleBagsCommand(msg)
@@ -952,6 +974,10 @@ function EspiUtils.HandleBagsCommand(msg)
     elseif cmd == "hearth" then
         db.hearthFirst = not db.hearthFirst
         Print(db.hearthFirst and "Hearthstone sorts to the first slot" or "Hearthstone sorts like any other item")
+    elseif TOGGLES[cmd] then
+        local key, text = TOGGLES[cmd][1], TOGGLES[cmd][2]
+        db[key] = not db[key]
+        Print(text .. (db[key] and ": on" or ": off"))
     elseif cmd == "debug" then
         db.debug = not db.debug
         Print("debug " .. (db.debug and "on" or "off"))
