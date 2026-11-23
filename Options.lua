@@ -282,25 +282,175 @@ local function BuildTimed()
     AddDefaults(panel, EspiUtils.ResetTimedReminders)
 end
 
+local function AddBagOrder(panel, bags)
+    local rowHeight, headerHeight, groupGap, listWidth = 23, 24, 5, 330
+    local sides = bags.Sides
+    local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 16, panel.y)
+    scroll:SetPoint("BOTTOMLEFT", 16, 16)
+    scroll:SetWidth(listWidth)
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetSize(listWidth, 1)
+    scroll:SetScrollChild(content)
+
+    local marker = content:CreateTexture(nil, "OVERLAY")
+    marker:SetSize(listWidth, 2)
+    marker:SetColorTexture(1, 0.82, 0, 1)
+    marker:Hide()
+
+    local rows, groups = {}, {}
+    local dragged
+
+    -- cursor position in UI units, plus the list's top and bottom edges
+    local function CursorPosition()
+        local x, y = GetCursorPosition()
+        local scale = scroll:GetEffectiveScale()
+        local top, bottom = scroll:GetTop(), scroll:GetBottom()
+        if not (top and bottom) then return end
+        return x / scale, y / scale, top, bottom
+    end
+
+    local function CursorInList()
+        local x, y, top, bottom = CursorPosition()
+        if not x then return end
+        local left, right = scroll:GetLeft(), scroll:GetRight()
+        if x < left or x > right or y < bottom or y > top then return end
+        return y, top
+    end
+
+    local function DropTarget()
+        local y, top = CursorInList()
+        if not y then return end
+        local offset = top - y + scroll:GetVerticalScroll()
+        local order = bags.GetSettings().order
+        for position, side in ipairs(sides) do
+            local group = groups[side]
+            -- the gap between groups belongs to the group above; the last takes the rest
+            if offset >= group.start and (offset <= group.finish + groupGap or position == #sides) then
+                local index = 1
+                for position, section in ipairs(order[side]) do
+                    local rowTop = group.start + headerHeight + (position - 1) * rowHeight
+                    if section ~= dragged.section then
+                        if offset < rowTop + rowHeight / 2 then return side, index, rowTop end
+                        index = index + 1
+                    end
+                end
+                local line = #order[side] > 0 and group.finish or group.start + headerHeight
+                return side, index, line
+            end
+        end
+    end
+
+    local function StopDrag()
+        if dragged then dragged:SetAlpha(1) end
+        dragged = nil
+        marker:Hide()
+        scroll:SetScript("OnUpdate", nil)
+    end
+
+    local function Refresh()
+        StopDrag()
+        local db, offset = bags.GetSettings(), 0
+        for _, side in ipairs(sides) do
+            local group, order = groups[side], db.order[side]
+            group.start = offset
+            group.header:ClearAllPoints()
+            group.header:SetPoint("TOPLEFT", 2, -offset - 3)
+            offset = offset + headerHeight
+            group.empty:ClearAllPoints()
+            group.empty:SetPoint("TOPLEFT", 24, -offset - 3)
+            group.empty:SetShown(#order == 0)
+            for _, section in ipairs(order) do
+                local row = rows[section]
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", 0, -offset)
+                if row.check then row.check:SetChecked(db[row.setting]) end
+                offset = offset + rowHeight
+            end
+            if #order == 0 then offset = offset + rowHeight end
+            group.finish = offset
+            offset = offset + groupGap
+        end
+        content:SetHeight(offset)
+    end
+
+    local function UpdateDrag(_, elapsed)
+        local _, y, top, bottom = CursorPosition()
+        if y then -- scrolls while the cursor is at or past the list's top or bottom edge
+            local offset = scroll:GetVerticalScroll()
+            if y > top - 14 then
+                scroll:SetVerticalScroll(math.max(0, offset - elapsed * 160))
+            elseif y < bottom + 14 then
+                scroll:SetVerticalScroll(math.min(scroll:GetVerticalScrollRange(), offset + elapsed * 160))
+            end
+        end
+        local side, _, line = DropTarget()
+        marker:SetShown(side ~= nil)
+        if side then
+            marker:ClearAllPoints()
+            marker:SetPoint("TOPLEFT", content, "TOPLEFT", 0, -line + 1)
+        end
+    end
+
+    for _, side in ipairs(sides) do
+        local header = content:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        header:SetText(side == "top" and "Top" or "Bottom")
+        local empty = content:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+        empty:SetText("Drop a group here")
+        groups[side] = { header = header, empty = empty }
+    end
+
+    for section, info in ipairs(bags.Sections) do
+        local row = CreateFrame("Button", nil, content)
+        row:SetSize(listWidth, rowHeight)
+        row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        row.section, row.setting = section, info.setting
+        local grip = row:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+        grip:SetPoint("LEFT", 4, 0)
+        grip:SetText("::")
+        local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        label:SetPoint("LEFT", 24, 0)
+        label:SetText(info.name)
+        if info.setting then
+            local check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+            check:SetSize(22, 22)
+            check:SetPoint("RIGHT", -4, 0)
+            check:SetScript("OnClick", function(self)
+                bags.GetSettings()[row.setting] = self:GetChecked() and true or false
+            end)
+            Tooltip(check, info.tip or "Give " .. info.name .. " its own sorting group.")
+            row.check = check
+        end
+        row:RegisterForDrag("LeftButton")
+        row:SetScript("OnDragStart", function(self)
+            dragged = self
+            self:SetAlpha(0.5)
+            scroll:SetScript("OnUpdate", UpdateDrag)
+            UpdateDrag(scroll, 0)
+        end)
+        row:SetScript("OnDragStop", function(self)
+            if dragged ~= self then return end
+            local side, index = DropTarget()
+            if side then bags.MoveSection(self.section, side, index) end
+            Refresh()
+        end)
+        rows[section] = row
+    end
+
+    panel:HookScript("OnHide", StopDrag)
+    panel.refreshers[#panel.refreshers + 1] = Refresh
+    Refresh()
+end
+
 local function BuildBags()
     local panel = NewPage("bags", "Bag Rules", true)
-    AddNote(panel, "A custom Clean Up: camping items and tools first, equipment-set gear together, tradeable gear in the middle, conjured items, junk and bound gear at the bottom. Shift-click Clean Up for Blizzard's sort.")
     if not EspiUtils.ready.bags then return ModuleOff(panel, "bags") end
+    AddNote(panel, "Drag groups to set their order. Top starts at the first slot and Bottom ends at the last. Shift-click Clean Up for Blizzard's sort.")
     local bags = EspiUtils.Bags
     for _, c in ipairs({
         { "enabled", "Clean Up button uses this sort", "Off: the button runs Blizzard's sort." },
         { "depositReagents", "Deposit reagents when the bank is open", "Clean Up first sends crafting reagents to the bank, then sorts the rest." },
-        { "pinBound", "Pin conjured, junk and bound gear to the last slots", "Off: they are packed right after BoE gear." },
-        { "questToJunk", "Sort quest items with junk", "Quest items go to the bottom with grey items (follows the pin setting above)." },
-        { "hearthFirst", "Always sort Hearthstone first", "The standard Hearthstone takes the first bag slot (toy hearthstones sort normally)." },
-        { "camping", "Camping items first", "Off: camping items sort like any other item." },
-        { "tools", "Tools next", "Off: profession tools and fishing poles sort like any other item." },
-        { "setGear", "Group equipment-set gear", "Off: set gear sorts with the rest of your gear." },
-        { "toyGear", "Sort use-effect gear like toys", "Off: those cloaks and wraps sort as normal gear." },
-        { "heirloom", "Group heirlooms", "Off: heirlooms sort with tradeable or bound gear." },
-        { "conjured", "Group conjured items", "Off: conjured items sort like any other item." },
-        { "splitBound", "Separate bound gear from tradeable gear", "Off: bound and BoE gear sort as one block." },
-        { "junk", "Group junk at the bottom", "Off: grey items (and quest items, if set above) sort like any other item." },
+        { "questToJunk", "Sort quest items with junk", "With Junk enabled, quest items follow grey items in that group." },
         { "debug", "Debug output", "Per-pass detail in chat and the log." },
     }) do
         local key = c[1]
@@ -313,6 +463,7 @@ local function BuildBags()
         { label = "Preview", tip = "Counts per section in chat; moves nothing.", onClick = bags.Preview },
     })
     AddDefaults(panel, bags.ResetDefaults)
+    AddBagOrder(panel, bags)
 end
 
 local function BuildKeep()
