@@ -14,25 +14,62 @@ function EspiUtils.InvalidateFoodItems()
     hasFood = nil
 end
 
--- True when the bags hold anything that could give a food buff.
+-- Plain food and water only give the "eating" buff. Only items whose tooltip
+-- mentions Well Fed can satisfy the reminder.
+local function WellFedName()
+    wellFedName = wellFedName or C_Spell.GetSpellName(WELL_FED)
+    return wellFedName
+end
+
+-- Returns true/false, or nil (and a fallback guess) when the data has not loaded.
+local function GrantsWellFed(bag, slot)
+    if not (C_TooltipInfo and C_TooltipInfo.GetBagItem and wellFedName) then
+        return nil, true -- cannot tell; fall back to any food
+    end
+    local data = C_TooltipInfo.GetBagItem(bag, slot)
+    if not data or not data.lines then
+        return nil, false -- tooltip not loaded yet
+    end
+    local needle = wellFedName:lower()
+    for _, line in ipairs(data.lines) do
+        local text = line.leftText
+        if text and not issecretvalue(text) and text:lower():find(needle, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+-- True when the bags hold anything that could give the Well Fed buff.
 local function HasFoodItem()
-    if hasFood == nil then
-        hasFood = false
-        for bag = 0, Enum.BagIndex.ReagentBag do
-            for slot = 1, C_Container.GetContainerNumSlots(bag) do
-                local itemID = C_Container.GetContainerItemID(bag, slot)
-                if itemID then
-                    local _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(itemID)
-                    if classID == FOOD_CLASS and subClassID == FOOD_SUBCLASS then
-                        hasFood = true
+    if hasFood ~= nil then
+        return hasFood
+    end
+    local found, uncertain = false, false
+    WellFedName()
+    for bag = 0, Enum.BagIndex.ReagentBag do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local itemID = C_Container.GetContainerItemID(bag, slot)
+            if itemID then
+                local _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(itemID)
+                if classID == FOOD_CLASS and subClassID == FOOD_SUBCLASS then
+                    local grants, guess = GrantsWellFed(bag, slot)
+                    if grants == nil then
+                        uncertain = true
+                        grants = guess
+                    end
+                    if grants then
+                        found = true
                         break
                     end
                 end
             end
-            if hasFood then break end
         end
+        if found then break end
     end
-    return hasFood
+    -- only cache a certain answer; unloaded tooltip data gets re-checked next time
+    if not uncertain then hasFood = found end
+    return found
 end
 
 -- Return no state when the client cannot tell us whether Well Fed is active.
@@ -48,8 +85,7 @@ function EspiUtils.GetFoodState()
         return
     end
 
-    wellFedName = wellFedName or C_Spell.GetSpellName(WELL_FED)
-    if not wellFedName then
+    if not WellFedName() then
         return
     end
 
