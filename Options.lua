@@ -25,7 +25,10 @@ local function NewPage(key, title, parent)
     heading:SetPoint("TOPLEFT", 16, -16)
     heading:SetText(title)
     panel.y = -52
+    -- The Settings window can show a page without firing OnShow the first time,
+    -- so also use its own refresh hook.
     panel:SetScript("OnShow", RefreshPanel)
+    panel.OnRefresh = RefreshPanel
     pages[key] = panel
     if parent then
         ordered[#ordered + 1] = panel
@@ -290,6 +293,14 @@ local function BuildBags()
         { "pinBound", "Pin conjured, junk and bound gear to the last slots", "Off: they are packed right after BoE gear." },
         { "questToJunk", "Sort quest items with junk", "Quest items go to the bottom with grey items (follows the pin setting above)." },
         { "hearthFirst", "Always sort Hearthstone first", "The standard Hearthstone takes the first bag slot (toy hearthstones sort normally)." },
+        { "camping", "Camping items first", "Off: camping items sort like any other item." },
+        { "tools", "Tools next", "Off: profession tools and fishing poles sort like any other item." },
+        { "setGear", "Group equipment-set gear", "Off: set gear sorts with the rest of your gear." },
+        { "toyGear", "Sort use-effect gear like toys", "Off: those cloaks and wraps sort as normal gear." },
+        { "heirloom", "Group heirlooms", "Off: heirlooms sort with tradeable or bound gear." },
+        { "conjured", "Group conjured items", "Off: conjured items sort like any other item." },
+        { "splitBound", "Separate bound gear from tradeable gear", "Off: bound and BoE gear sort as one block." },
+        { "junk", "Group junk at the bottom", "Off: grey items (and quest items, if set above) sort like any other item." },
         { "debug", "Debug output", "Per-pass detail in chat and the log." },
     }) do
         local key = c[1]
@@ -312,7 +323,13 @@ local function BuildKeep()
     AddCheck(panel, "Keep bags open", "Turning it on keeps whatever bags are open right now.",
         function() return keep.GetSettings().enabled end,
         keep.SetEnabled)
-    AddDefaults(panel, function() keep.SetEnabled(true) end)
+    AddCheck(panel, "Include reagent bag", "Off leaves the reagent bag alone: it is not reopened and not saved as kept.",
+        function() return keep.GetSettings().reagent end,
+        keep.SetReagent)
+    AddDefaults(panel, function()
+        keep.SetReagent(true)
+        keep.SetEnabled(true)
+    end)
 end
 
 local function BuildQuests()
@@ -322,6 +339,11 @@ local function BuildQuests()
     AddCheck(panel, "Sort tracked quests by level", nil,
         function() return qs.GetSettings().enabled end,
         qs.SetEnabled)
+    AddNote(panel, "Untrack every tracked quest that is yellow, orange or red for your level, keeping only green and grey ones.")
+    AddButtons(panel, {
+        { label = "Untrack non-green quests", width = 180, onClick = qs.KeepEasy,
+          tip = "Quests you haven't tracked are not added." },
+    })
     AddDefaults(panel, function() qs.SetEnabled(false) end)
 end
 
@@ -351,6 +373,96 @@ local function BuildMouseover()
             end
         end
     end
+    local picker
+    local function openPicker()
+        if picker then
+            picker:SetShown(not picker:IsShown())
+            if picker:IsShown() then picker.refresh() end
+            return
+        end
+        picker = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+        picker:SetSize(380, 440)
+        picker:SetPoint("CENTER")
+        picker:SetFrameStrata("DIALOG")
+        picker:SetMovable(true)
+        picker:EnableMouse(true)
+        picker:RegisterForDrag("LeftButton")
+        picker:SetScript("OnDragStart", picker.StartMoving)
+        picker:SetScript("OnDragStop", picker.StopMovingOrSizing)
+        picker.TitleText:SetText("Pick spells")
+        tinsert(UISpecialFrames, "EspiUtilsSpellPicker")
+        _G.EspiUtilsSpellPicker = picker
+
+        local search = CreateFrame("EditBox", nil, picker, "InputBoxTemplate")
+        search:SetSize(330, 20)
+        search:SetPoint("TOPLEFT", 18, -34)
+        search:SetAutoFocus(false)
+        search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+        local scroll = CreateFrame("ScrollFrame", nil, picker, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 12, -62)
+        scroll:SetPoint("BOTTOMRIGHT", -32, 10)
+        local content = CreateFrame("Frame", nil, scroll)
+        content:SetSize(320, 1)
+        scroll:SetScrollChild(content)
+
+        local ROW = 26
+        local prow = {}
+        local function makePickRow(i)
+            local row = CreateFrame("Frame", nil, content)
+            row:SetSize(320, ROW)
+            row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW)
+            row.icon = row:CreateTexture(nil, "ARTWORK")
+            row.icon:SetSize(20, 20)
+            row.icon:SetPoint("LEFT", 2, 0)
+            row.hostile = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            row.hostile:SetSize(56, 22)
+            row.hostile:SetPoint("RIGHT", -2, 0)
+            row.hostile:SetText("Hostile")
+            row.friendly = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            row.friendly:SetSize(56, 22)
+            row.friendly:SetPoint("RIGHT", row.hostile, "LEFT", -2, 0)
+            row.friendly:SetText("Friendly")
+            row.label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            row.label:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+            row.label:SetPoint("RIGHT", row.friendly, "LEFT", -4, 0)
+            row.label:SetJustifyH("LEFT")
+            local function pick(cmd)
+                return function()
+                    if mo.Add(cmd, row.spell) then
+                        refreshList()
+                        picker.refresh()
+                    end
+                end
+            end
+            row.friendly:SetScript("OnClick", pick("add"))
+            row.hostile:SetScript("OnClick", pick("harm"))
+            prow[i] = row
+            return row
+        end
+
+        picker.refresh = function()
+            local q = strtrim(search:GetText()):lower()
+            local n = 0
+            for _, e in ipairs(mo.GetSpellbook()) do
+                if q == "" or e.name:lower():find(q, 1, true) then
+                    n = n + 1
+                    local row = prow[n] or makePickRow(n)
+                    row.spell = e.name
+                    row.icon:SetTexture(e.icon)
+                    row.label:SetText(e.name)
+                    local shade = mo.Has(e.name) and 0.5 or 1 -- dim spells already in the list
+                    row.label:SetTextColor(shade, shade, shade)
+                    row:Show()
+                end
+            end
+            for i = n + 1, #prow do prow[i]:Hide() end
+            content:SetHeight(math.max(1, n * ROW))
+        end
+        search:SetScript("OnTextChanged", function() picker.refresh() end)
+        picker.refresh()
+    end
+
     local addFriendly = act("add")
     box:SetScript("OnEnterPressed", addFriendly)
     box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -361,6 +473,7 @@ local function BuildMouseover()
           onClick = addFriendly },
         { label = "Add hostile", width = 110, tip = "Mouseover hostile, falls back to your target.",
           onClick = act("harm") },
+        { label = "Pick spells", width = 90, tip = "Choose from your spellbook.", onClick = openPicker },
         { label = "Sync now", width = 90, onClick = mo.Sync },
     })
 
@@ -453,6 +566,8 @@ function EspiUtils.InitializeOptions()
     BuildQuests()
     BuildMouseover()
     Register(main)
+    -- Fill every control now so a page never starts blank.
+    EspiUtils.RefreshOptions()
 end
 
 -- Re-reads every page's controls after settings changed from outside the page.
