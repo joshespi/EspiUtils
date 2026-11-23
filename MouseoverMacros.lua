@@ -98,6 +98,86 @@ local function requestSync()
     end
 end
 
+-- Spellbook scan (castable spells only), cached until the book changes.
+local book -- sorted { {name=, icon=, id=}, ... }
+
+local function scanBook()
+    local out, seen = {}, {}
+    local SB = C_SpellBook
+    if not (SB and SB.GetNumSpellBookSkillLines and Enum.SpellBookSpellBank) then
+        return out
+    end
+    local bank = Enum.SpellBookSpellBank.Player
+    local spellType = Enum.SpellBookItemType and Enum.SpellBookItemType.Spell
+    for line = 1, SB.GetNumSpellBookSkillLines() do
+        local li = SB.GetSpellBookSkillLineInfo(line)
+        if li and not li.offSpecID then
+            for slot = li.itemIndexOffset + 1, li.itemIndexOffset + li.numSpellBookItems do
+                local info = SB.GetSpellBookItemInfo(slot, bank)
+                if info and info.itemType == spellType and not info.isPassive
+                    and not info.isOffSpec and info.name and not seen[info.name] then
+                    seen[info.name] = true
+                    out[#out + 1] = { name = info.name, icon = info.iconID, id = info.spellID }
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return out
+end
+
+local function getBook()
+    book = book or scanBook()
+    return book
+end
+
+local function distance(a, b)
+    local prev = {}
+    for j = 0, #b do prev[j] = j end
+    for i = 1, #a do
+        local cur = { [0] = i }
+        for j = 1, #b do
+            local cost = a:byte(i) == b:byte(j) and 0 or 1
+            cur[j] = math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+        end
+        prev = cur
+    end
+    return prev[#b]
+end
+
+-- Best spellbook match for typed text, or nil when none/ambiguous (second value lists ambiguous names).
+local function resolveSpell(text)
+    local lower = text:lower()
+    local entries = getBook()
+    local function unique(test)
+        local hits = {}
+        for _, e in ipairs(entries) do
+            if test(e.name:lower()) then hits[#hits + 1] = e.name end
+        end
+        if #hits == 1 then return hits[1] end
+        if #hits > 1 then return nil, hits end
+    end
+    local hit, amb = unique(function(n) return n == lower end)
+    if hit then return hit end
+    hit, amb = unique(function(n) return n:sub(1, #lower) == lower end)
+    if hit or amb then return hit, amb end
+    hit, amb = unique(function(n) return n:find(lower, 1, true) ~= nil end)
+    if hit or amb then return hit, amb end
+    local best, bestD, tie
+    local maxD = math.min(2, math.floor(#lower / 4)) -- short names get little or no fuzz
+    for _, e in ipairs(entries) do
+        local d = distance(lower, e.name:lower())
+        if d <= maxD then
+            if not bestD or d < bestD then
+                best, bestD, tie = e.name, d, false
+            elseif d == bestD then
+                tie = true
+            end
+        end
+    end
+    if best and not tie then return best end
+end
+
 local function parseSpell(arg)
     local id = arg:match("|Hspell:(%d+)")
     if id then
@@ -114,6 +194,13 @@ local function add(cmd, list)
         local spell = parseSpell(piece)
         if spell then
             parsed = true
+            local fixed, ambiguous = resolveSpell(spell)
+            if fixed and fixed ~= spell then
+                say(("corrected '%s' -> '%s'"):format(spell, fixed))
+                spell = fixed
+            elseif ambiguous then
+                say(spell .. ": matches " .. table.concat(ambiguous, ", ") .. " (using as typed)")
+            end
             local _, existing, clash = find(spell)
             if clash then
                 say(spell .. ": macro name same as " .. clash .. " after truncation, skipped")
@@ -214,6 +301,8 @@ EspiUtils.Mouseover = {
     Remove = function(text) if spells then remove(text) end end,
     Sync = function() if spells then requestSync() end end,
     GetList = function() return spells end,
+    GetSpellbook = function() return getBook() end,
+    Has = function(name) return spells and (find(name)) ~= nil end,
     LABEL = LABEL,
 }
 
@@ -231,6 +320,8 @@ f:SetScript("OnEvent", function(_, event)
             end
         end
         sync()
+    elseif event == "SPELLS_CHANGED" or event == "PLAYER_SPECIALIZATION_CHANGED" then
+        book = nil
     elseif pending then
         sync()
     end
@@ -240,4 +331,6 @@ function EspiUtils.InitMouseover(settings)
     db = settings
     f:RegisterEvent("PLAYER_LOGIN")
     f:RegisterEvent("PLAYER_REGEN_ENABLED")
+    f:RegisterEvent("SPELLS_CHANGED")
+    f:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 end
