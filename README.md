@@ -8,7 +8,7 @@ This addon replaces the standalone EspiBagRules, KeepBagsOpen and MouseoverMacro
 
 ### Food reminder
 
-Shows a reminder when Well Fed is missing or about to expire.
+Shows a reminder when Well Fed is missing or about to expire. It stays quiet when you carry no food.
 
 `/espiutils food [on | off | status | lead <seconds> | move | reset]`
 
@@ -22,7 +22,7 @@ Shows a reminder when a buff your class maintains is missing or about to expire:
 
 Posture and water reminders that show for a few seconds at an interval, once you are alive and out of combat. Click a shown reminder to dismiss it; right-click to dismiss it and delay the next one by 5 minutes. They wait while you are AFK, and all reminders wait during cinematics.
 
-`/espiutils <posture|water> [on | off | status | interval <minutes> | test]`
+`/espiutils <posture|water|standup> [on | off | status | interval <minutes> | test]`
 
 ### Reminder options
 
@@ -47,7 +47,9 @@ A custom Clean Up. Your general bags are sorted, in on-screen order, into:
 
 Partial stacks are merged, the reagent and profession bags sort within themselves, and bags set to "Ignore this bag" are left alone. Shift-click Clean Up for Blizzard's sort.
 
-`/espiutils bags [sort | stop | preview | on | off | pin | quest | log | debug | probe]`
+`/espiutils bags [sort | stop | preview | on | off | pin | quest | hearth | camping | tools | sets | toys | heirloom | conjured | bound | junk | log | debug | probe]`
+
+Each section above can be switched off on the Bag Rules page or with its command (`camping`, `tools`, `sets`, `toys`, `heirloom`, `conjured`, `bound`, `junk`).
 
 `/bagrules` and `/brules` still work. The log keeps the last 200 lines in the saved variables, written on `/reload` or logout.
 
@@ -55,11 +57,13 @@ Partial stacks are merged, the reagent and profession bags sort within themselve
 
 Bags only close when you close them. When the game closes your bags (vendor, mail, Escape closing another window), they are reopened. Bags you close yourself stay closed, and in combat they come back when combat ends.
 
-`/espiutils keep [on | off | status | blocked | blocked clear]` (no argument toggles). `/kbo` and `/keepbags` still work. `blocked` lists actions the game blocked; include it in bug reports.
+`/espiutils keep [on | off | status | blocked | blocked clear]` (no argument toggles). `/kbo` and `/keepbags` still work. `blocked` lists actions the game blocked; include it in bug reports. The reagent bag can be left out with "Include reagent bag" on the Keep Bags Open page.
 
 ### Quest Tracker
 
 Sorts the quest tracker by quest level, lowest first (off by default). Tick it on the Quest Tracker page or use `/espiutils quests [on | off | status]` (no argument toggles). It reorders your tracked quests, so turning it off leaves the current order in place.
+
+The "Untrack non-green quests" button (`/espiutils quests keepeasy`) untracks every tracked quest that is yellow, orange or red for your level and keeps the green and grey ones. It never adds quests.
 
 ### Mouseover Macros
 
@@ -72,7 +76,7 @@ Keeps a character macro named `MO <spell>` for each spell in a per-class list:
 
 `/espiutils mouseover [add | harm | del | list | sync] <spells>`. `add` casts on a friendly mouseover, `harm` on a hostile one, both falling back to your target. Shift-click spells in the spellbook to insert them. The list is shared by all characters of the same class; macros are per character. Macro names are cut to 16 characters, so two spells that end up with the same name can't both be added. `/momacro` still works.
 
-On the settings page, type spells and press Enter (friendly) or use the Add buttons; each listed spell has an X to remove it and a button to switch it between friendly and hostile.
+Typed spell names are matched against your spellbook and near-misses are corrected. On the settings page, "Pick spells" lists your spellbook with Friendly and Hostile buttons; or type spells and press Enter (friendly) or use the Add buttons; each listed spell has an X to remove it and a button to switch it between friendly and hostile.
 
 ## Install
 

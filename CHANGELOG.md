@@ -1,5 +1,14 @@
 ﻿# Changelog
 
+## 1.4.0
+
+- Quest Tracker page has an "Untrack non-green quests" button (`/espiutils quests keepeasy`) that keeps only green and grey tracked quests.
+- New hourly "Stand up" timed reminder (`/espiutils standup`), with the same options as posture and water.
+- Bag Rules can switch off each sorting rule: camping, tools, set gear, use-effect gear, heirlooms, conjured, bound split and junk (`/espiutils bags camping | tools | sets | toys | heirloom | conjured | bound | junk`).
+- Keep Bags Open has an "Include reagent bag" option.
+- Mouseover Macros has a "Pick spells" spellbook picker and corrects near-miss spell names.
+- The food reminder stays quiet when you carry nothing to eat.
+
 ## 1.3.0
 
 - Bag Rules has a new option, "Always sort Hearthstone first" (off by default; `/espiutils bags hearth`).
