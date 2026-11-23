@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## 1.5.0
+
+- Bag Rules sections can be dragged into any order on the Bag Rules page. This replaces the "pin" option and the `/espiutils bags pin` command.
+- The food reminder only counts food whose tooltip mentions Well Fed, so plain food and water no longer silence it. It stays quiet when you carry no Well Fed food.
+
 ## 1.4.0
 
 - Quest Tracker page has an "Untrack non-green quests" button (`/espiutils quests keepeasy`) that keeps only green and grey tracked quests.
