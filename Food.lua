@@ -6,6 +6,35 @@ EspiUtils.wellFedSpellID = WELL_FED
 local issecretvalue = issecretvalue or function() return false end
 local wellFedName -- localized; nil until the spell data has loaded
 
+local FOOD_CLASS = Enum.ItemClass.Consumable
+local FOOD_SUBCLASS = Enum.ItemConsumableSubclass.Fooddrink
+local hasFood -- cached bag scan; nil until needed, cleared when the bags change
+
+function EspiUtils.InvalidateFoodItems()
+    hasFood = nil
+end
+
+-- True when the bags hold anything that could give a food buff.
+local function HasFoodItem()
+    if hasFood == nil then
+        hasFood = false
+        for bag = 0, Enum.BagIndex.ReagentBag do
+            for slot = 1, C_Container.GetContainerNumSlots(bag) do
+                local itemID = C_Container.GetContainerItemID(bag, slot)
+                if itemID then
+                    local _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(itemID)
+                    if classID == FOOD_CLASS and subClassID == FOOD_SUBCLASS then
+                        hasFood = true
+                        break
+                    end
+                end
+            end
+            if hasFood then break end
+        end
+    end
+    return hasFood
+end
+
 -- Return no state when the client cannot tell us whether Well Fed is active.
 function EspiUtils.GetFoodState()
     -- Can't eat on a flight path.
@@ -30,6 +59,10 @@ function EspiUtils.GetFoodState()
         return
     end
     if not aura then
+        -- Nothing to eat: no reminder.
+        if not HasFoodItem() then
+            return
+        end
         return "missing"
     end
 

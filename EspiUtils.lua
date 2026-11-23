@@ -188,9 +188,9 @@ local function PrintHelp()
     Print("/espiutils (or /espi) options - open the settings")
     Print("/espiutils food [on | off | status | lead <seconds> | test | move | reset]")
     Print("/espiutils rebuff [on | off | status | lead <seconds> | test | move | reset]")
-    Print("/espiutils <posture|water> [on | off | status | interval <minutes> | test]")
+    Print("/espiutils <posture|water|standup> [on | off | status | interval <minutes> | test]")
     Print("/espiutils move [reset] - move and resize the reminders (shared by all characters)")
-    Print("/espiutils bags [sort | stop | preview | on | off | pin | quest | log | debug | probe]")
+    Print("/espiutils bags [sort | stop | preview | on | off | pin | quest | hearth | camping | tools | sets | toys | heirloom | conjured | bound | junk | log | debug | probe]")
     Print("/espiutils quests [on | off | status] - sort the quest tracker by level")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
@@ -351,6 +351,7 @@ events:SetScript("OnEvent", function(self, event, ...)
         self:RegisterEvent("PLAYER_UNGHOST")
         self:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
         self:RegisterEvent("SPELL_DATA_LOAD_RESULT")
+        self:RegisterEvent("BAG_UPDATE_DELAYED")
         for _, visibilityEvent in ipairs(EspiUtils.VISIBILITY_EVENTS) do
             pcall(self.RegisterEvent, self, visibilityEvent)
         end
@@ -372,6 +373,11 @@ events:SetScript("OnEvent", function(self, event, ...)
         -- Only the Well Fed name is needed, and only once.
         if ... == EspiUtils.wellFedSpellID then
             self:UnregisterEvent("SPELL_DATA_LOAD_RESULT")
+            UpdateReminder()
+        end
+    elseif event == "BAG_UPDATE_DELAYED" then
+        EspiUtils.InvalidateFoodItems()
+        if IsPlayerInWorld() then
             UpdateReminder()
         end
     elseif event == "UNIT_AURA" then

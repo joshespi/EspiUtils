@@ -21,6 +21,14 @@ local definitions = {
         minutes = 25,
         y = -102,
     },
+    {
+        command = "standup",
+        title = "Stand up",
+        detail = "Stand up and stretch your legs.",
+        icon = "Interface\\Icons\\Ability_Rogue_Sprint",
+        minutes = 60,
+        y = -162,
+    },
 }
 local reminders = {}
 
