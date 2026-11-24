@@ -1,6 +1,6 @@
 ﻿# Changelog
 
-## Unreleased
+## 1.9.0
 
 - Posture, water and stand up reminders no longer come due at the same moment: if two would fire together, the later one is moved to at least 2 minutes after the other. This also spaces out reminders that are overdue at login or that piled up during combat.
 - Bewsh options page has "Story to say / party / guild" buttons that post the "Why bewsh?" story on demand. The level-up chat checkboxes are relabelled "On level up: ...".
