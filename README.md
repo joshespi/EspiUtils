@@ -30,7 +30,7 @@ On the main settings page: play a sound when a reminder appears, hide reminders 
 
 ### Moving and resizing reminders
 
-`/espiutils move` shows every reminder: drag one to move it, scroll over it to resize it, and right-click it (or run `/espiutils move` again) to lock. Positions and sizes are saved account-wide, so every character uses the same layout. `/espiutils move reset` puts them all back.
+All alerts (Bewsh, posture, water, stand up, Well Fed, rebuff) appear in one banner and queue in order. `/espiutils move` shows the banner: drag it to move it, scroll over it to resize it, and right-click it (or run `/espiutils move` again) to lock. The position and size are saved account-wide, so every character uses the same layout. `/espiutils move reset` puts it back.
 
 ### Bag Rules
 
@@ -75,7 +75,7 @@ Typed spell names are matched against your spellbook and near-misses are correct
 
 Everyone says "ding" when they level, a habit from the EverQuest days. Back in vanilla WoW, Espi joked that it's really more of a "boosh" noise, and it stuck. Bewsh is that word, spelled the way it sounds.
 
-When you level up, a "Bewsh!" tile tells you that you bewshed (hover over it for the story; click to dismiss). Optionally post `bewsh (<level>)` to guild chat, group chat, or both. Group posts go to your party or raid, or to instance chat if you only have a matchmaking group. Both chat options are off by default. If combat locks chat, posts wait until combat ends.
+When you level up, a "Bewsh!" alert tells you that you bewshed (hover over it for the story; click to dismiss). Optionally post `bewsh (<level>)` to guild chat, group chat, or both. Group posts go to your party or raid, or to instance chat if you only have a matchmaking group. Both chat options are off by default. If combat locks chat, posts wait until combat ends.
 
 `/espiutils bewsh [on | off | status | guild | party | test | story]` (`/espiutils boosh` works too).
 

@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.7.0
+
+- One alert banner: Bewsh, posture, water, stand up, Well Fed and rebuff alerts now appear in a single movable spot and queue one after another instead of stacking. Timed alerts go in order; Well Fed and rebuff stay up and give way to them. Left-click dismisses a timed alert, right-click on a posture, water or stand up alert also snoozes it. The Options page has a "Test banner" button. The banner position is new (per-alert positions are dropped); "Reset position" on any page resets the shared banner, and a page's Defaults no longer moves it.
+
 ## 1.6.0
 
 - New "Bewsh" level-up notification: a tile says you bewshed instead of ding, with the story on hover. Optional `bewsh (<level>)` post to guild and/or party (off by default). Settings on the new Bewsh page or `/espiutils bewsh [on | off | status | guild | party | test | story]`.
