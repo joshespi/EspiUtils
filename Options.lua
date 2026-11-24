@@ -153,8 +153,8 @@ local function ModuleOff(panel, key)
 end
 
 local MOVE_BUTTON = {
-    label = "Move reminders",
-    tip = "Show every reminder to drag and resize (scroll over one). Right-click one to lock. Positions are shared by all characters.",
+    label = "Move banner",
+    tip = "Show the alert banner to drag and resize (scroll over it). Right-click it to lock. The position is shared by all characters.",
     onClick = function()
         -- The Settings window would cover the reminders, so close it to drag.
         if EspiUtils.ToggleTileMove() and SettingsPanel and SettingsPanel:IsShown() then
@@ -162,6 +162,21 @@ local MOVE_BUTTON = {
         end
     end,
 }
+
+local RESET_POSITION_BUTTON = {
+    label = "Reset position",
+    tip = "Default position and size for the alert banner. Shared by every alert.",
+    onClick = EspiUtils.Banner.ResetPosition,
+}
+
+-- Button spec that runs a preview function; false means it couldn't show.
+local function PreviewButton(preview, label, width, tip)
+    return { label = label or "Preview", width = width, tip = tip, onClick = function()
+        if not preview() then
+            EspiUtils.Print("Preview available while alive and out of combat.")
+        end
+    end }
+end
 
 -- Pages ----------------------------------------------------------------------
 
@@ -184,6 +199,8 @@ local function BuildMain()
     end
     AddButtons(panel, {
         { label = "Test sound", width = 110, onClick = general.PlaySound },
+        PreviewButton(EspiUtils.Banner.Test, "Test banner", 110,
+            "Queue three sample alerts to see them appear one after another."),
         MOVE_BUTTON,
         { label = "Reset all", width = 110,
           tip = "Default settings for these options and default positions and sizes for every reminder.",
@@ -204,26 +221,13 @@ local function BuildMain()
     return panel
 end
 
--- Button spec that runs a preview function; false means it couldn't show.
-local function PreviewButton(preview)
-    return { label = "Preview", onClick = function()
-        if not preview() then
-            EspiUtils.Print("Preview available while alive and out of combat.")
-        end
-    end }
-end
-
-local function AddReminderActions(panel, api, resetTip)
-    AddButtons(panel, {
-        PreviewButton(api.Preview),
-        MOVE_BUTTON,
-        { label = "Reset position", tip = resetTip, onClick = api.ResetPosition },
-    })
+local function AddReminderActions(panel, api)
+    AddButtons(panel, { PreviewButton(api.Preview), MOVE_BUTTON, RESET_POSITION_BUTTON })
     AddDefaults(panel, api.ResetDefaults)
 end
 
 -- Shared page body for the Food and Rebuff reminders.
-local function AddBuffControls(panel, api, enableLabel, resetTip)
+local function AddBuffControls(panel, api, enableLabel)
     AddCheck(panel, enableLabel, nil,
         function() return api.GetSettings().enabled end,
         api.SetEnabled)
@@ -234,14 +238,13 @@ local function AddBuffControls(panel, api, enableLabel, resetTip)
         ("Whole number from 0 to %d."):format(api.MAX_LEAD),
         function() return api.GetSettings().lead end,
         api.SetLead)
-    AddReminderActions(panel, api, resetTip)
+    AddReminderActions(panel, api)
 end
 
 local function BuildFood()
     local panel = NewPage("food", "Food Reminder", true)
     AddNote(panel, "Shows a reminder when the Well Fed buff is missing or about to run out.")
-    AddBuffControls(panel, EspiUtils.Food, "Enable food reminder",
-        "Default position and size for the Well Fed reminder.")
+    AddBuffControls(panel, EspiUtils.Food, "Enable food reminder")
 end
 
 local function BuildRebuff()
@@ -252,8 +255,7 @@ local function BuildRebuff()
         AddNote(panel, "No buffs are tracked for this character's class.")
         return
     end
-    AddBuffControls(panel, rebuff, "Enable rebuff reminder",
-        "Default position and size for the rebuff reminder.")
+    AddBuffControls(panel, rebuff, "Enable rebuff reminder")
 end
 
 local function BuildTimed()
@@ -274,15 +276,7 @@ local function BuildTimed()
         })
     end
     AddHeader(panel, "Position")
-    AddButtons(panel, {
-        MOVE_BUTTON,
-        { label = "Reset positions", tip = "Default position and size for the posture and water reminders.",
-          onClick = function()
-              for _, definition in ipairs(EspiUtils.GetTimedReminders()) do
-                  EspiUtils.Tiles.Reset(definition.command)
-              end
-          end },
-    })
+    AddButtons(panel, { MOVE_BUTTON, RESET_POSITION_BUTTON })
     AddDefaults(panel, EspiUtils.ResetTimedReminders)
 end
 
@@ -508,7 +502,7 @@ local function BuildBewsh()
     AddNote(panel, "Shows \"You bewshed!\" when you level up. Hover over it for the story.")
     AddNote(panel, "|cffffd100Why bewsh?|r " .. bewsh.Story)
     for _, c in ipairs({
-        { "enabled", "Enable Bewsh on level up", "Turns on the tile and any chat posts you select below." },
+        { "enabled", "Enable Bewsh on level up", "Turns on the alert and any chat posts you select below." },
         { "guild", "Post \"bewsh\" to guild (needs Enable)", "Sends \"bewsh (<level>)\" to guild chat instead of you typing ding." },
         { "party", "Post \"bewsh\" to group chat (needs Enable)", "Sends \"bewsh (<level>)\" to your party or raid, or to instance chat if you only have a matchmaking group. If chat is locked, it is sent after combat." },
     }) do
@@ -517,7 +511,7 @@ local function BuildBewsh()
             function() return bewsh.GetSettings()[key] end,
             function(on) bewsh.Set(key, on) end)
     end
-    AddReminderActions(panel, bewsh, "Default position and size for the Bewsh tile.")
+    AddReminderActions(panel, bewsh)
 end
 
 local function BuildMouseover()

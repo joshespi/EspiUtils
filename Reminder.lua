@@ -36,7 +36,7 @@ function EspiUtils.CreateReminder(titleText, iconPath)
     fade:SetToFinalAlpha(true)
     frame:HookScript("OnShow", function() fade:Play() end)
     frame:HookScript("OnHide", function() fade:Stop() end)
-    return frame, detail, icon
+    return frame, detail, icon, title
 end
 
 -- Tiles -------------------------------------------------------------------------
@@ -151,7 +151,7 @@ function EspiUtils.RegisterTile(key, frame, detail, default, refresh, onClick)
         if unlocked then
             if button == "RightButton" then
                 SetUnlocked(false)
-                EspiUtils.Print("Reminders locked.")
+                EspiUtils.Print("Banner locked.")
             end
         elseif onClick then
             onClick(button)
@@ -161,18 +161,18 @@ function EspiUtils.RegisterTile(key, frame, detail, default, refresh, onClick)
         self:StopMovingOrSizing()
     end)
     -- OnShow only fires when a hidden tile appears, not on every text update.
-    frame:HookScript("OnShow", function()
-        if general.sound and not unlocked then
-            EspiUtils.General.PlaySound()
-        end
-    end)
+    frame:HookScript("OnShow", function() EspiUtils.General.PlayAlertSound() end)
     Place(tile)
 end
 
 -- store: EspiUtilsAccountDB.tiles. Hand-edited or corrupt entries fall back to defaults.
 function EspiUtils.InitTiles(store)
+    local registered = {}
+    for _, tile in ipairs(tiles) do registered[tile.key] = true end
     for key, saved in pairs(store) do
-        if type(saved) ~= "table" then
+        if not registered[key] then
+            store[key] = nil -- tiles from before the single banner
+        elseif type(saved) ~= "table" then
             store[key] = nil
         else
             if type(saved.x) ~= "number" or type(saved.y) ~= "number" then
@@ -188,7 +188,6 @@ end
 
 -- Tile API, shared by the slash commands and the options screen.
 EspiUtils.Tiles = {
-    MOVE_HINT = MOVE_HINT,
     IsUnlocked = function() return unlocked end,
     -- Returns whether tiles are now unlocked, plus a message when it was refused.
     Toggle = function()
@@ -244,6 +243,12 @@ EspiUtils.General = {
     PlaySound = function()
         PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or RAID_WARNING_SOUND_ID)
     end,
+    -- The alert sound, when turned on and not while moving the banner.
+    PlayAlertSound = function()
+        if general.sound and not unlocked then
+            EspiUtils.General.PlaySound()
+        end
+    end,
 }
 
 -- Events that change whether reminders may show. Not on every client, so register with pcall.
@@ -273,8 +278,8 @@ function EspiUtils.CanShowReminder(timed)
 end
 
 -- Shared pieces of the Food and Rebuff reminders ------------------------------------
--- o.key: tile key; o.label: "Food"; o.defaults: saved defaults; o.maxLead;
--- o.settings(): the saved table (nil before load); o.update(): re-evaluate the tile;
+-- o.key: settings key; o.label: "Food"; o.defaults: saved defaults; o.maxLead;
+-- o.settings(): the saved table (nil before load); o.update(): re-evaluate the alert;
 -- o.preview(): show a 5 second preview.
 -- Returns the settings API used by the slash command and the options screen.
 function EspiUtils.NewBuffReminderAPI(o)
@@ -302,13 +307,8 @@ function EspiUtils.NewBuffReminderAPI(o)
         if not EspiUtils.CanPreviewReminder() then return false end
         return o.preview() ~= false
     end
-    function api.ResetPosition()
-        EspiUtils.Tiles.Reset(o.key)
-    end
     function api.ResetDefaults()
         EspiUtils.ApplyDefaults(o.settings(), o.defaults, true)
-        EspiUtils.Tiles.Lock()
-        EspiUtils.Tiles.Reset(o.key)
         o.update()
     end
     return api
@@ -334,8 +334,8 @@ function EspiUtils.HandleBuffReminderCommand(o, action, value)
     elseif action == "move" then
         EspiUtils.ToggleTileMove()
     elseif action == "reset" then
-        api.ResetPosition()
-        Print("Reminder position reset.")
+        EspiUtils.Banner.ResetPosition()
+        Print("Banner position reset.")
     elseif action == "test" then
         if not api.Preview() then
             Print("Preview available while alive and out of combat" .. (o.previewNote or "") .. ".")

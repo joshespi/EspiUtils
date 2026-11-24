@@ -11,7 +11,6 @@ local definitions = {
         detail = "Sit tall and relax your shoulders.",
         icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
         minutes = 40,
-        y = -42,
     },
     {
         command = "water",
@@ -19,7 +18,6 @@ local definitions = {
         detail = "Take a sip of water.",
         icon = "Interface\\Icons\\INV_Drink_07",
         minutes = 25,
-        y = -102,
     },
     {
         command = "standup",
@@ -27,7 +25,6 @@ local definitions = {
         detail = "Stand up and stretch your legs.",
         icon = "Interface\\Icons\\Ability_Rogue_Sprint",
         minutes = 60,
-        y = -162,
     },
 }
 local reminders = {}
@@ -40,27 +37,15 @@ local function CanShow()
     return EspiUtils.CanShowReminder(true)
 end
 
--- While the tiles are unlocked for moving they stay up until locked.
 local function Dismiss(reminder)
-    if reminder.hideTimer then
-        reminder.hideTimer:Cancel()
-        reminder.hideTimer = nil
-    end
-    if not EspiUtils.Tiles.IsUnlocked() then
-        reminder.frame:Hide()
-    end
+    EspiUtils.Banner.Dismiss(reminder.alert.key)
 end
+
+local Fire, Snooze
 
 local function Show(reminder)
-    Dismiss(reminder)
-    reminder.frame:Show()
-    reminder.hideTimer = C_Timer.NewTimer(DISPLAY_SECONDS, function()
-        reminder.hideTimer = nil
-        Dismiss(reminder)
-    end)
+    EspiUtils.Banner.Push(reminder.alert)
 end
-
-local Fire
 
 local function Schedule(reminder, delay)
     reminder.intervalTimer = C_Timer.NewTimer(delay or reminder.settings.minutes * 60, function()
@@ -82,7 +67,7 @@ function Fire(reminder)
 end
 
 -- Pushes the next reminder back by SNOOZE_MINUTES.
-local function Snooze(reminder)
+function Snooze(reminder)
     if reminder.intervalTimer then reminder.intervalTimer:Cancel() end
     reminder.pending = false
     Schedule(reminder, SNOOZE_MINUTES * 60)
@@ -120,21 +105,19 @@ function EspiUtils.InitializeTimedReminders(settings)
         if not ValidMinutes(saved.minutes) then
             saved.minutes = definition.minutes
         end
-        local frame, detail = EspiUtils.CreateReminder(definition.title, definition.icon)
-        detail:SetText(definition.detail)
-
-        local reminder = { frame = frame, settings = saved, title = definition.title }
+        local reminder = { settings = saved, title = definition.title }
+        -- Left-click dismisses the banner; right-click also delays the next reminder.
+        reminder.alert = {
+            key = definition.command,
+            title = definition.title,
+            text = definition.detail,
+            icon = definition.icon,
+            duration = DISPLAY_SECONDS,
+            onRightClick = function()
+                if saved.enabled then Snooze(reminder) end
+            end,
+        }
         reminders[definition.command] = reminder
-        -- Left-click dismisses the shown reminder; right-click also delays the next one.
-        EspiUtils.RegisterTile(definition.command, frame, detail, { "TOP", "TOP", 0, definition.y }, function()
-            detail:SetText(definition.detail)
-            Dismiss(reminder)
-        end, function(button)
-            Dismiss(reminder)
-            if button == "RightButton" and reminder.settings.enabled then
-                Snooze(reminder)
-            end
-        end)
         Restart(reminder, true)
     end
 end
@@ -193,7 +176,6 @@ function EspiUtils.ResetTimedReminders()
             reminder.settings.enabled = true
             reminder.settings.minutes = definition.minutes
             Restart(reminder)
-            EspiUtils.Tiles.Reset(definition.command)
         end
     end
 end

@@ -3,7 +3,7 @@
 ## Notes: Well Fed, class rebuff, posture and hydration reminders, custom bag sorting, keep bags open, quest tracker sorting, mouseover macros, and a "bewsh" level-up notification. /espiutils options
 ## Author: Espi
 ## X-Website: https://discord.gg/6QXzmaSjW
-## Version: 1.6.0
+## Version: 1.7.0
 ## Category: Utility
 ## IconTexture: Interface\Icons\INV_Misc_Bag_08
 ## X-Curse-Project-ID: 1819610
@@ -14,6 +14,7 @@
 ## AddonCompartmentFuncOnLeave: EspiUtils_OnCompartmentLeave
 
 Reminder.lua
+Banner.lua
 Food.lua
 TimedReminders.lua
 ClassBuffs.lua

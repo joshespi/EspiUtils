@@ -4,7 +4,6 @@ local FOOD_DEFAULTS = { enabled = true, hideResting = true, lead = 60 }
 local Print = EspiUtils.Print
 
 local events = CreateFrame("Frame")
-local reminder, detail = EspiUtils.CreateReminder("Well Fed", "Interface\\Icons\\INV_Misc_Fork&Knife")
 local Tiles = EspiUtils.Tiles
 
 local settings
@@ -12,8 +11,13 @@ local timer
 local auraPending = false
 
 local function ShowReminder(message)
-    detail:SetText(message)
-    reminder:Show()
+    EspiUtils.Banner.Push({
+        key = "food", title = "Well Fed", text = message, icon = "Interface\\Icons\\INV_Misc_Fork&Knife",
+    })
+end
+
+local function HideReminder()
+    EspiUtils.Banner.Dismiss("food")
 end
 
 local function CancelTimer()
@@ -26,15 +30,11 @@ end
 local function UpdateReminder()
     CancelTimer()
     if not EspiUtils.CanShowReminder() then
-        reminder:Hide()
-        return
-    end
-    if Tiles.IsUnlocked() then
-        ShowReminder(Tiles.MOVE_HINT)
+        HideReminder()
         return
     end
     if not settings.enabled or (settings.hideResting and IsResting()) then
-        reminder:Hide()
+        HideReminder()
         return
     end
 
@@ -44,7 +44,7 @@ local function UpdateReminder()
         return
     end
     if not remaining then
-        reminder:Hide()
+        HideReminder()
         return
     end
     -- remaining is always > 0 here, so a lead of 0 never shows the countdown.
@@ -54,15 +54,11 @@ local function UpdateReminder()
         ShowReminder(("Expires in %d:%02d"):format(math.floor(seconds / 60), seconds % 60))
         delay = remaining - seconds + 1
     else
-        reminder:Hide()
+        HideReminder()
         delay = remaining - settings.lead
     end
     timer = C_Timer.NewTimer(math.max(0.05, delay), UpdateReminder)
 end
-
-EspiUtils.RegisterTile("food", reminder, detail, { "CENTER", "CENTER", 0, 155 }, function()
-    if settings then UpdateReminder() else reminder:Hide() end
-end)
 
 -- Food reminder API, shared by the slash command and the options screen.
 local foodOptions = {
@@ -209,9 +205,9 @@ function EspiUtils.ToggleTileMove()
     if refused then
         Print(refused)
     elseif unlocked then
-        Print("Drag the reminders to move them, scroll over one to resize. Right-click one or use /espiutils move to lock.")
+        Print("Drag the alert banner to move it, scroll over it to resize. Right-click it or use /espiutils move to lock.")
     else
-        Print("Reminders locked.")
+        Print("Banner locked.")
     end
     return unlocked
 end
@@ -323,12 +319,7 @@ events:SetScript("OnEvent", function(self, event, ...)
         if not EspiUtils.IsWholeInRange(settings.lead, 0, MAX_LEAD) then
             settings.lead = FOOD_DEFAULTS.lead
         end
-        -- Tile positions used to be per character (Well Fed only): the first
-        -- character to log in after the update carries its spot over.
         account.tiles = type(account.tiles) == "table" and account.tiles or {}
-        if not account.tiles.food and type(settings.x) == "number" and type(settings.y) == "number" then
-            account.tiles.food = { x = settings.x, y = settings.y }
-        end
         settings.x, settings.y = nil, nil
         account.general = type(account.general) == "table" and account.general or {}
         EspiUtils.InitGeneral(account.general)
@@ -371,7 +362,7 @@ events:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
         -- This event can run just before the new restriction is enforced.
-        reminder:Hide()
+        HideReminder()
         C_Timer.After(0, UpdateReminder)
     elseif event == "SPELL_DATA_LOAD_RESULT" then
         -- Only the Well Fed name is needed, and only once.
@@ -399,11 +390,12 @@ events:SetScript("OnEvent", function(self, event, ...)
             EspiUtils.SetCinematic(false)
         end
         EspiUtils.RefreshTimedReminders(event)
+        EspiUtils.Banner.Refresh()
         if event == "PLAYER_REGEN_DISABLED" then
             -- InCombatLockdown() is still false during this event, so
             -- UpdateReminder would show the reminder as combat starts.
             CancelTimer()
-            reminder:Hide()
+            HideReminder()
         else
             UpdateReminder()
         end

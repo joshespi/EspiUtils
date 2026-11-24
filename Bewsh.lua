@@ -11,42 +11,24 @@ local STORY = "Everyone says \"ding\" when they level, a habit from the EverQues
     .. "Bewsh is that word, spelled the way it sounds."
 
 local settings = {} -- EspiUtils.InitializeBewsh replaces it with the saved table
-local hideTimer
 local pendingChat = {}
 
-local frame, detail = EspiUtils.CreateReminder("Bewsh!", "Interface\\Icons\\Spell_Holy_SurgeOfLight")
 local events = CreateFrame("Frame")
 
 local function Dismiss()
-    if hideTimer then
-        hideTimer:Cancel()
-        hideTimer = nil
-    end
-    if not EspiUtils.Tiles.IsUnlocked() then
-        frame:Hide()
-    end
+    EspiUtils.Banner.Dismiss("bewsh")
 end
 
 local function Show(level)
-    if hideTimer then hideTimer:Cancel() end
-    detail:SetText(level and ("You bewshed! Level %d."):format(level) or "You bewshed!")
-    frame:Show()
-    hideTimer = C_Timer.NewTimer(DISPLAY_SECONDS, function()
-        hideTimer = nil
-        Dismiss()
-    end)
+    EspiUtils.Banner.Push({
+        key = "bewsh",
+        title = "Bewsh!",
+        text = level and ("You bewshed! Level %d."):format(level) or "You bewshed!",
+        icon = "Interface\\Icons\\Spell_Holy_SurgeOfLight",
+        duration = DISPLAY_SECONDS,
+        tooltip = { "Why bewsh?", STORY },
+    })
 end
-
-EspiUtils.RegisterTile("bewsh", frame, detail, { "CENTER", "CENTER", 0, 95 }, Dismiss, Dismiss)
-
-frame:HookScript("OnEnter", function(self)
-    if EspiUtils.Tiles.IsUnlocked() then return end
-    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-    GameTooltip:SetText("Why bewsh?")
-    GameTooltip:AddLine(STORY, 1, 1, 1, true)
-    GameTooltip:Show()
-end)
-frame:HookScript("OnLeave", function() GameTooltip:Hide() end)
 
 -- Chat ------------------------------------------------------------------------
 
@@ -158,19 +140,15 @@ EspiUtils.Bewsh = {
             Dismiss()
         end
     end,
-    -- Shows the tile for a few seconds; false when in combat or dead.
+    -- Shows the alert for a few seconds; false when in combat or dead.
     Preview = function()
         if not EspiUtils.CanPreviewReminder() then return false end
         Show(UnitLevel("player"))
         return true
     end,
-    ResetPosition = function()
-        EspiUtils.Tiles.Reset("bewsh")
-    end,
     ResetDefaults = function()
         EspiUtils.ApplyDefaults(settings, DEFAULTS, true)
         ClearPendingChat()
-        EspiUtils.Tiles.Reset("bewsh")
         Dismiss()
     end,
 }

@@ -41,10 +41,8 @@ local CLASS_BUFFS = {
 
 local CLASS = UnitClassBase and UnitClassBase("player") or select(2, UnitClass("player"))
 local issecretvalue = issecretvalue or function() return false end
-local Tiles = EspiUtils.Tiles
 
 local DEFAULT_ICON = "Interface\\Icons\\Spell_Holy_WordFortitude"
-local reminder, detail, icon = EspiUtils.CreateReminder("Rebuff", DEFAULT_ICON)
 local events = CreateFrame("Frame")
 local settings
 local buffs -- this class's entries; nil when the class has none
@@ -199,9 +197,11 @@ end
 -- entry: the buff being shown, whose spell icon replaces the default one.
 local function ShowReminder(message, entry)
     local texture = entry and entry.iconId and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(entry.iconId)
-    icon:SetTexture(texture or DEFAULT_ICON)
-    detail:SetText(message)
-    reminder:Show()
+    EspiUtils.Banner.Push({ key = "rebuff", title = "Rebuff", text = message, icon = texture or DEFAULT_ICON })
+end
+
+local function HideReminder()
+    EspiUtils.Banner.Dismiss("rebuff")
 end
 
 local function CancelTimer()
@@ -213,17 +213,12 @@ end
 
 local function UpdateReminder()
     CancelTimer()
-    -- A class with no tracked buffs never shows a tile, not even while moving tiles.
     if not buffs or not EspiUtils.CanShowReminder() then
-        reminder:Hide()
-        return
-    end
-    if Tiles.IsUnlocked() then
-        ShowReminder(Tiles.MOVE_HINT)
+        HideReminder()
         return
     end
     if not settings.enabled or (settings.hideResting and IsResting()) then
-        reminder:Hide()
+        HideReminder()
         return
     end
 
@@ -236,17 +231,12 @@ local function UpdateReminder()
         ShowReminder(("%s expires in %d:%02d"):format(name, math.floor(seconds / 60), seconds % 60), entry)
         delay = remaining - seconds + 1 -- tick once a second for the countdown
     else
-        reminder:Hide()
+        HideReminder()
     end
     -- Aura and roster events cover every other change.
     if delay then
         timer = C_Timer.NewTimer(math.max(0.05, delay), UpdateReminder)
     end
-end
-
--- Only classes with buffs get a tile: move mode shows every registered tile.
-if CLASS_BUFFS[CLASS] then
-    EspiUtils.RegisterTile("rebuff", reminder, detail, { "CENTER", "CENTER", 0, 215 }, UpdateReminder)
 end
 
 -- API, shared by the slash command and the options screen ---------------------------
@@ -361,12 +351,12 @@ events:SetScript("OnEvent", function(_, event, unit)
         events:UnregisterEvent("UNIT_AURA")
         -- InCombatLockdown() is still false during this event.
         CancelTimer()
-        reminder:Hide()
+        HideReminder()
     elseif event == "PLAYER_REGEN_ENABLED" then
         events:RegisterEvent("UNIT_AURA")
         UpdateReminder()
     elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
-        reminder:Hide()
+        HideReminder()
         C_Timer.After(0, UpdateReminder)
     else
         UpdateReminder()
