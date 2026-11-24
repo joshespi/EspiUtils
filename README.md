@@ -77,7 +77,7 @@ Everyone says "ding" when they level, a habit from the EverQuest days. Back in v
 
 When you level up, a "Bewsh!" alert tells you that you bewshed (hover over it for the story; click to dismiss). Optionally post `bewsh (<level>)` to guild chat, group chat, or both. Group posts go to your party or raid, or to instance chat if you only have a matchmaking group. Both chat options are off by default. If combat locks chat, posts wait until combat ends.
 
-`/espiutils bewsh [on | off | status | guild | party | test | story]` (`/espiutils boosh` works too).
+`/espiutils bewsh [on | off | status | guild | party | test | story [say | party | guild]]` (`/espiutils boosh` works too). `story` prints the story to you; add `say`, `party` or `guild` to post it there instead (`say` posts it as one message; party and guild get one sentence per message).
 
 ## Install
 

@@ -190,7 +190,7 @@ local function PrintHelp()
     Print("/espiutils quests [on | off | status] - sort the quest tracker by level")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
-    Print("/espiutils bewsh (or boosh) [on | off | status | guild | party | test | story] - level-up notification")
+    Print("/espiutils bewsh (or boosh) " .. EspiUtils.Bewsh.Usage .. " - level-up notification")
     Print("/espiutils version")
 end
 
@@ -245,7 +245,7 @@ SlashCmdList.ESPIUTILS = function(message)
     elseif command == "move" then
         HandleMove(action)
     elseif command == "bewsh" or command == "boosh" then
-        EspiUtils.HandleBewshCommand(action)
+        EspiUtils.HandleBewshCommand(action, value)
     elseif command == "options" or command == "config" or command == "settings" then
         EspiUtils.OpenOptions()
     elseif command == "version" then

@@ -38,10 +38,11 @@ end
 
 local sendChatMessage = C_ChatInfo and C_ChatInfo.SendChatMessage or SendChatMessage
 
+-- Returns true if the message went out.
 local function Send(message, channel)
-    if not pcall(sendChatMessage, message, channel) then
-        Print("couldn't post to " .. channel:lower() .. ".")
-    end
+    if pcall(sendChatMessage, message, channel) then return true end
+    Print("couldn't post to " .. channel:lower() .. ".")
+    return false
 end
 
 local function GroupChannel()
@@ -157,7 +158,48 @@ local function OnOff(on)
     return on and "on" or "off"
 end
 
-function EspiUtils.HandleBewshCommand(action)
+-- Story targets: each returns the chat channel, or nil plus why it can't post there.
+local STORY_TARGETS = {
+    say = function() return "SAY" end,
+    party = function() return GroupChannel(), "you're not in a group." end,
+    guild = function() return IsInGuild() and "GUILD" or nil, "you're not in a guild." end,
+}
+local STORY_USAGE = "story [say | party | guild]"
+local USAGE = "[on | off | status | guild | party | test | " .. STORY_USAGE .. "]"
+EspiUtils.Bewsh.Usage = USAGE
+
+-- Prints the story, or posts it to say (one message) or party/guild (one sentence per message).
+local function TellStory(target)
+    if target == "" then
+        Print(STORY)
+        return
+    end
+    local resolve = STORY_TARGETS[target]
+    if not resolve then
+        Print("use /espiutils bewsh " .. STORY_USAGE .. ".")
+        return
+    end
+    local channel, reason = resolve()
+    if not channel then
+        Print(reason)
+        return
+    end
+    if ChatLocked() then
+        Print("chat is locked right now, try again later.")
+        return
+    end
+    -- Outside instances, SAY allows one message per keypress, so it gets the whole story at once.
+    if channel == "SAY" then
+        Send(STORY, channel)
+        return
+    end
+    -- Every sentence in STORY must end in . ! or ?, or this pattern drops it.
+    for sentence in STORY:gmatch("%S.-[%.!?]") do
+        if not Send(sentence, channel) then return end
+    end
+end
+
+function EspiUtils.HandleBewshCommand(action, value)
     local api = EspiUtils.Bewsh
     if action == "on" or action == "off" then
         api.Set("enabled", action == "on")
@@ -170,11 +212,11 @@ function EspiUtils.HandleBewshCommand(action)
             Print("preview available while alive and out of combat.")
         end
     elseif action == "story" then
-        Print(STORY)
+        TellStory(value:lower())
     elseif action == "" or action == "status" then
         Print(("level-up notification %s. Guild post %s, party post %s."):format(
             OnOff(settings.enabled), OnOff(settings.guild), OnOff(settings.party)))
     else
-        Print("use /espiutils bewsh [on | off | status | guild | party | test | story].")
+        Print("use /espiutils bewsh " .. USAGE .. ".")
     end
 end
