@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## Unreleased
+
+- Posture, water and stand up reminders no longer come due at the same moment: if two would fire together, the later one is moved to at least 2 minutes after the other. This also spaces out reminders that are overdue at login or that piled up during combat.
+- Bewsh options page has "Story to say / party / guild" buttons that post the "Why bewsh?" story on demand. The level-up chat checkboxes are relabelled "On level up: ...".
+
 ## 1.7.0
 
 - One alert banner: Bewsh, posture, water, stand up, Well Fed and rebuff alerts now appear in a single movable spot and queue one after another instead of stacking. Timed alerts go in order; Well Fed and rebuff stay up and give way to them. Left-click dismisses a timed alert, right-click on a posture, water or stand up alert also snoozes it. The Options page has a "Test banner" button. The banner position is new (per-alert positions are dropped); "Reset position" on any page resets the shared banner, and a page's Defaults no longer moves it.

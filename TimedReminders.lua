@@ -4,6 +4,7 @@ local Print = EspiUtils.Print
 local DISPLAY_SECONDS = 8
 local MAX_MINUTES = 180
 local SNOOZE_MINUTES = 5
+local STAGGER_SECONDS = 120
 local definitions = {
     {
         command = "posture",
@@ -47,9 +48,28 @@ local function Show(reminder)
     EspiUtils.Banner.Push(reminder.alert)
 end
 
+-- Pushes due later until no other reminder is due within STAGGER_SECONDS,
+-- so reminders with the same interval or clock don't all fire at once.
+local function Staggered(reminder, due)
+    local moved = true
+    while moved do
+        moved = false
+        for _, other in pairs(reminders) do
+            if other ~= reminder and other.dueAt and math.abs(due - other.dueAt) < STAGGER_SECONDS then
+                due = other.dueAt + STAGGER_SECONDS
+                moved = true
+            end
+        end
+    end
+    return due
+end
+
 local function Schedule(reminder, delay)
-    reminder.intervalTimer = C_Timer.NewTimer(delay or reminder.settings.minutes * 60, function()
+    local now = GetTime()
+    reminder.dueAt = Staggered(reminder, now + (delay or reminder.settings.minutes * 60))
+    reminder.intervalTimer = C_Timer.NewTimer(reminder.dueAt - now, function()
         reminder.intervalTimer = nil
+        reminder.dueAt = nil
         if CanShow() then
             Fire(reminder)
         else
@@ -66,7 +86,7 @@ function Fire(reminder)
     Schedule(reminder)
 end
 
--- Pushes the next reminder back by SNOOZE_MINUTES.
+-- Pushes the next reminder back by at least SNOOZE_MINUTES (staggering may add more).
 function Snooze(reminder)
     if reminder.intervalTimer then reminder.intervalTimer:Cancel() end
     reminder.pending = false
@@ -79,6 +99,7 @@ local function Restart(reminder, resume)
         reminder.intervalTimer:Cancel()
         reminder.intervalTimer = nil
     end
+    reminder.dueAt = nil
     reminder.pending = false
     if reminder.settings.enabled then
         local delay
@@ -129,8 +150,9 @@ function EspiUtils.RefreshTimedReminders(event)
         if blocked then
             Dismiss(reminder)
         elseif reminder.pending then
+            -- Schedule (not Fire) so reminders that piled up while blocked stagger.
             reminder.pending = false
-            Fire(reminder)
+            Schedule(reminder, 0)
         end
     end
 end

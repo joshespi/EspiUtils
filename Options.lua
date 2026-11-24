@@ -503,8 +503,8 @@ local function BuildBewsh()
     AddNote(panel, "|cffffd100Why bewsh?|r " .. bewsh.Story)
     for _, c in ipairs({
         { "enabled", "Enable Bewsh on level up", "Turns on the alert and any chat posts you select below." },
-        { "guild", "Post \"bewsh\" to guild (needs Enable)", "Sends \"bewsh (<level>)\" to guild chat instead of you typing ding." },
-        { "party", "Post \"bewsh\" to group chat (needs Enable)", "Sends \"bewsh (<level>)\" to your party or raid, or to instance chat if you only have a matchmaking group. If chat is locked, it is sent after combat." },
+        { "guild", "On level up: post \"bewsh\" to guild (needs Enable)", "Sends \"bewsh (<level>)\" to guild chat instead of you typing ding." },
+        { "party", "On level up: post \"bewsh\" to group chat (needs Enable)", "Sends \"bewsh (<level>)\" to your party or raid, or to instance chat if you only have a matchmaking group. If chat is locked, it is sent after combat." },
     }) do
         local key = c[1]
         AddCheck(panel, c[2], c[3],
@@ -512,6 +512,18 @@ local function BuildBewsh()
             function(on) bewsh.Set(key, on) end)
     end
     AddReminderActions(panel, bewsh)
+    AddHeader(panel, "Tell the story now")
+    AddButtons(panel, {
+        { label = "Story to say", width = 110,
+          tip = "Posts the Why bewsh story to say chat as one message.",
+          onClick = function() bewsh.TellStory("say") end },
+        { label = "Story to party", width = 110,
+          tip = "Posts the Why bewsh story to your party, raid or instance chat, one sentence per message.",
+          onClick = function() bewsh.TellStory("party") end },
+        { label = "Story to guild", width = 110,
+          tip = "Posts the Why bewsh story to guild chat, one sentence per message.",
+          onClick = function() bewsh.TellStory("guild") end },
+    })
 end
 
 local function BuildMouseover()

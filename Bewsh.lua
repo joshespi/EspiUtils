@@ -199,6 +199,8 @@ local function TellStory(target)
     end
 end
 
+EspiUtils.Bewsh.TellStory = TellStory
+
 function EspiUtils.HandleBewshCommand(action, value)
     local api = EspiUtils.Bewsh
     if action == "on" or action == "off" then
