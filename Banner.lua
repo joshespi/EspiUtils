@@ -78,30 +78,32 @@ end)
 
 -- Visibility ----------------------------------------------------------------------
 
--- Whether alerts may show now: alive, out of combat, no cinematic, and not where the
--- player asked to hide them. timed: the posture, water and stand up reminders, which
+-- Whether persistent and timed alerts may show now: alive, out of combat, no cinematic,
+-- and not where the player asked to hide them. Timed alerts (posture, water, stand up)
 -- also wait while AFK and can be hidden in instances.
-function Banner.CanShow(timed)
-    if combat or cinematic or not EspiUtils.CanPreviewReminder() then return false end
-    if timed and UnitIsAFK and UnitIsAFK("player") then return false end
+local function Visibility()
+    if combat or cinematic or not EspiUtils.CanPreviewReminder() then return false, false end
     local general = EspiUtils.General.GetSettings()
-    if general.hideMounted and IsMounted and IsMounted() then return false end
-    if general.hidePvP or (timed and general.timedHideInstances) then
-        local inInstance, kind = IsInInstance()
-        if general.hidePvP and (kind == "pvp" or kind == "arena") then return false end
-        if timed and general.timedHideInstances and inInstance then return false end
-    end
-    return true
+    if general.hideMounted and IsMounted and IsMounted() then return false, false end
+    local inInstance, kind = IsInInstance()
+    if general.hidePvP and (kind == "pvp" or kind == "arena") then return false, false end
+    local timed = not (general.timedHideInstances and inInstance) and not (UnitIsAFK and UnitIsAFK("player"))
+    return true, timed
 end
 
--- Set once per Pick, so a render checks each kind of alert once, not once per entry.
--- Previews ignore the hide options but still wait for a calm moment.
-local showNormal, showTimed, showPreview = false, false, false
+-- timed: ask for the posture, water and stand up reminders instead of persistent alerts.
+function Banner.CanShow(timed)
+    local normal, timedOk = Visibility()
+    if timed then return timedOk end
+    return normal
+end
 
-local function Allowed(alert)
-    if alert.preview then return showPreview end
-    if alert.timed then return showTimed end
-    return showNormal
+-- Whether alert may show, given this Pick's answers for each kind. Previews ignore the
+-- hide options but still wait for a calm moment.
+local function Allowed(alert, normal, timed, preview)
+    if alert.preview then return preview end
+    if alert.timed then return timed end
+    return normal
 end
 
 -- Queue ---------------------------------------------------------------------------
@@ -158,16 +160,16 @@ local function Pick()
         end
     end
     if #queue == 0 then return end
-    showPreview = not combat and EspiUtils.CanPreviewReminder()
-    showNormal = Banner.CanShow(false)
-    showTimed = showNormal and Banner.CanShow(true)
-    if current and current.alert.duration and Allowed(current.alert) then return current end
+    -- Checked once per Pick, not once per entry.
+    local normal, timed = Visibility()
+    local preview = not combat and EspiUtils.CanPreviewReminder()
+    if current and current.alert.duration and Allowed(current.alert, normal, timed, preview) then return current end
     for _, e in ipairs(queue) do
-        if e.alert.duration and Allowed(e.alert) then return e end
+        if e.alert.duration and Allowed(e.alert, normal, timed, preview) then return e end
     end
-    if current and Allowed(current.alert) then return current end
+    if current and Allowed(current.alert, normal, timed, preview) then return current end
     for _, e in ipairs(queue) do
-        if Allowed(e.alert) then return e end
+        if Allowed(e.alert, normal, timed, preview) then return e end
     end
 end
 
@@ -219,16 +221,10 @@ end
 
 -- alert: { key, title, text, icon, duration, timed, preview, onRightClick, tooltip = { title, text } }
 -- timed: wait while AFK and obey "hide in instances"; preview: ignore the hide options.
--- Pushing a key that is already queued or showing replaces it.
+-- Pushing a key that is already queued or showing replaces it. The banner redraws on the
+-- next frame, so a burst of pushes (countdown ticks, Banner.Test) renders once.
 function Banner.Push(alert)
     local entry = Find(alert.key)
-    -- Countdown ticks (Well Fed, rebuff) update the shown alert's text once a second: skip the full render.
-    if entry and entry == current and not alert.duration and frame:IsShown() and not unlocked then
-        entry.alert = alert
-        detail:SetText(alert.text or "")
-        icon:SetTexture(alert.icon or IDLE_ICON)
-        return
-    end
     if entry then
         -- A repeated alert starts over.
         CancelTimer(entry)
@@ -239,7 +235,7 @@ function Banner.Push(alert)
         queue[#queue + 1] = entry
     end
     entry.alert = alert
-    Render()
+    RequestRender()
 end
 
 function Banner.Dismiss(key)

@@ -21,7 +21,8 @@ end
 
 -- Returns the frame to build on: the page's scroll child (content.outer is the page
 -- the Settings window shows). Scrolling lets tall pages fit the smaller classic options window.
-local function NewPage(key, title, parent)
+-- Every key but "main" is a subpage under the main page.
+local function NewPage(key, title)
     local page = CreateFrame("Frame")
     page.name = title
     page.refreshers = {}
@@ -48,10 +49,20 @@ local function NewPage(key, title, parent)
     page:SetScript("OnShow", RefreshPanel)
     page.OnRefresh = RefreshPanel
     pages[key] = page
-    if parent then
+    if key ~= "main" then
         ordered[#ordered + 1] = page
     end
     return panel
+end
+
+-- A text box at x, y on parent that drops focus on Escape.
+local function NewEditBox(parent, width, x, y)
+    local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    box:SetSize(width, 20)
+    box:SetPoint("TOPLEFT", x, y)
+    box:SetAutoFocus(false)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    return box
 end
 
 local function AddNote(panel, text)
@@ -96,6 +107,19 @@ local function AddCheck(panel, label, tip, get, set)
     return check
 end
 
+-- One check per spec { key, label, tip } for a boolean in settings(); set(key, on) stores it.
+-- Returns the checks by key.
+local function AddChecks(panel, settings, set, specs)
+    local checks = {}
+    for _, spec in ipairs(specs) do
+        local key = spec[1]
+        checks[key] = AddCheck(panel, spec[2], spec[3],
+            function() return settings()[key] end,
+            function(on) set(key, on) end)
+    end
+    return checks
+end
+
 -- Greys out a check (and its label) whose setting only matters when another is on.
 local function SetCheckEnabled(check, on)
     check:SetEnabled(on)
@@ -109,10 +133,7 @@ local function AddNumber(panel, label, min, max, get, set)
     local text = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     text:SetPoint("TOPLEFT", 16, panel.y - 4)
     text:SetText(label)
-    local box = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-    box:SetSize(50, 20)
-    box:SetPoint("TOPLEFT", 280, panel.y)
-    box:SetAutoFocus(false)
+    local box = NewEditBox(panel, 50, 280, panel.y)
     box:SetNumeric(true)
     box:SetMaxLetters(4)
     local function refresh() box:SetText(tostring(get() or "")) end
@@ -136,14 +157,10 @@ end
 
 -- A read-only box that selects its text on focus so it can be copied.
 local function AddCopyBox(panel, value, width)
-    local box = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-    box:SetSize(width, 20)
-    box:SetPoint("TOPLEFT", 22, panel.y)
-    box:SetAutoFocus(false)
+    local box = NewEditBox(panel, width, 22, panel.y)
     local function reset() box:SetText(value) box:HighlightText() end
     box:SetScript("OnEditFocusGained", reset)
     box:SetScript("OnTextChanged", function(_, user) if user then reset() end end)
-    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     box:SetText(value)
     box:SetCursorPosition(0)
@@ -178,8 +195,7 @@ local function AddDefaults(panel, reset)
 end
 
 local function ModuleOff(panel, key)
-    local legacy = EspiUtils.legacy[key]
-    AddNote(panel, ("|cffff6060Off:|r the old %s addon is enabled. Disable it in the AddOns list and /reload to use this."):format(legacy.addon))
+    AddNote(panel, "|cffff6060Off:|r " .. EspiUtils.ModuleOffText(key))
 end
 
 local MOVE_BUTTON = {
@@ -193,40 +209,30 @@ local MOVE_BUTTON = {
     end,
 }
 
-local RESET_POSITION_BUTTON = {
-    label = "Reset position",
-    tip = "Default position and size for the alert banner. Shared by every alert.",
-    onClick = EspiUtils.Banner.ResetPosition,
-}
-
 -- Button spec that runs a preview function; false means it couldn't show.
 local function PreviewButton(preview, label, width, tip)
     return { label = label or "Preview", width = width, tip = tip, onClick = function()
-        if not preview() then
-            EspiUtils.Print("Preview available while alive and out of combat.")
-        end
+        if not preview() then EspiUtils.PrintPreviewBlocked() end
     end }
 end
 
 -- Pages ----------------------------------------------------------------------
 
+-- Built after the subpages, so its page list comes from their titles.
 local function BuildMain()
     local panel = NewPage("main", "Espi Utils")
     AddNote(panel, "Small quality-of-life tools. Pick a page on the left. Everything is also available from chat: /espiutils with no arguments lists the commands.")
-    AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water, stand up)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Quest Tracker\n- Mouseover Macros\n- Boosh (level-up notification)")
+    local names = {}
+    for _, page in ipairs(ordered) do names[#names + 1] = "- " .. page.name end
+    AddNote(panel, "Pages:\n" .. table.concat(names, "\n"))
     AddHeader(panel, "All reminders")
     local general = EspiUtils.General
-    for _, c in ipairs({
+    AddChecks(panel, general.GetSettings, general.Set, {
         { "sound", "Play a sound when a reminder appears", "Off by default." },
         { "hideMounted", "Hide while mounted", "Reminders return when you dismount." },
         { "hidePvP", "Hide in battlegrounds and arenas", nil },
         { "timedHideInstances", "Hide posture, water and stand up reminders in instances", "Well Fed and rebuff reminders are not affected." },
-    }) do
-        local key = c[1]
-        AddCheck(panel, c[2], c[3],
-            function() return general.GetSettings()[key] end,
-            function(on) general.Set(key, on) end)
-    end
+    })
     AddButtons(panel, {
         { label = "Test sound", width = 110, onClick = general.PlaySound },
         PreviewButton(EspiUtils.Banner.Test, "Test banner", 110,
@@ -251,8 +257,9 @@ local function BuildMain()
     return panel.outer
 end
 
+-- The banner's position is set on the main page.
 local function AddReminderActions(panel, api)
-    AddButtons(panel, { PreviewButton(api.Preview), MOVE_BUTTON, RESET_POSITION_BUTTON })
+    AddButtons(panel, { PreviewButton(api.Preview) })
     AddDefaults(panel, api.ResetDefaults)
 end
 
@@ -305,8 +312,6 @@ local function BuildTimed()
             PreviewButton(function() return EspiUtils.TestTimedReminder(command) end),
         })
     end
-    AddHeader(panel, "Position")
-    AddButtons(panel, { MOVE_BUTTON, RESET_POSITION_BUTTON })
     AddDefaults(panel, EspiUtils.ResetTimedReminders)
 end
 
@@ -475,17 +480,11 @@ local function BuildBags()
     if not EspiUtils.ready.bags then return ModuleOff(panel, "bags") end
     AddNote(panel, "Drag groups to set their order. Top starts at the first slot and Bottom ends at the last. Shift-click Clean Up for Blizzard's sort.")
     local bags = EspiUtils.Bags
-    for _, c in ipairs({
+    AddChecks(panel, bags.GetSettings, function(key, on) bags.GetSettings()[key] = on end, {
         { "enabled", "Clean Up button uses this sort", "Off: the button runs Blizzard's sort." },
         { "depositReagents", "Deposit reagents when the bank is open", "Clean Up first sends crafting reagents to the bank, then sorts the rest." },
-        { "questToJunk", "Sort quest items with junk", "With Junk enabled, quest items follow grey items in that group." },
         { "debug", "Debug output", "Per-pass detail in chat and the log." },
-    }) do
-        local key = c[1]
-        AddCheck(panel, c[2], c[3],
-            function() return bags.GetSettings()[key] end,
-            function(on) bags.GetSettings()[key] = on end)
-    end
+    })
     AddButtons(panel, {
         { label = "Sort now", tip = "Open your bags first so their layout is used.", onClick = bags.Sort },
         { label = "Preview", tip = "Counts per section in chat; moves nothing.", onClick = bags.Preview },
@@ -512,10 +511,7 @@ local function BuildKeep()
         { label = "Show blocked actions", width = 160, tip = "Prints the recorded list in chat.", onClick = keep.PrintBlocked },
         { label = "Clear list", width = 100, onClick = keep.ClearBlocked },
     })
-    AddDefaults(panel, function()
-        keep.SetReagent(true)
-        keep.SetEnabled(true, true)
-    end)
+    AddDefaults(panel, keep.ResetDefaults)
 end
 
 local function BuildQuests()
@@ -533,10 +529,7 @@ local function BuildQuests()
         { label = "Untrack non-green quests", width = 180, onClick = qs.KeepEasy,
           tip = "Quests you haven't tracked are not added." },
     })
-    AddDefaults(panel, function()
-        qs.SetEnabled(false)
-        qs.SetOrder("asc")
-    end)
+    AddDefaults(panel, qs.ResetDefaults)
 end
 
 local function BuildBewsh()
@@ -544,38 +537,36 @@ local function BuildBewsh()
     local bewsh = EspiUtils.Bewsh
     AddNote(panel, "Shows \"You booshed!\" when you level up. Hover over it for the story.")
     AddNote(panel, "|cffffd100Why boosh?|r " .. bewsh.Story)
-    for _, c in ipairs({
+    local checks = AddChecks(panel, bewsh.GetSettings, function(key, on)
+        bewsh.Set(key, on)
+        if key == "enabled" then RefreshPanel(panel) end
+    end, {
         { "enabled", "Enable Boosh on level up", "Turns on the alert and any chat posts you select below." },
         { "guild", "On level up: post \"boosh\" to guild", "Sends \"boosh (<level>)\" to guild chat instead of you typing ding." },
         { "party", "On level up: post \"boosh\" to group chat", "Sends \"boosh (<level>)\" to your party or raid, or to instance chat if you only have a matchmaking group. If chat is locked, it is sent after combat." },
-    }) do
-        local key = c[1]
-        local check = AddCheck(panel, c[2], c[3],
-            function() return bewsh.GetSettings()[key] end,
-            function(on)
-                bewsh.Set(key, on)
-                if key == "enabled" then RefreshPanel(panel) end
-            end)
-        -- Chat posts only happen with the alert enabled.
-        if key ~= "enabled" then
-            panel.refreshers[#panel.refreshers + 1] = function()
-                SetCheckEnabled(check, bewsh.GetSettings().enabled)
-            end
-        end
+    })
+    -- Chat posts only happen with the alert enabled.
+    panel.refreshers[#panel.refreshers + 1] = function()
+        local on = bewsh.GetSettings().enabled
+        SetCheckEnabled(checks.guild, on)
+        SetCheckEnabled(checks.party, on)
     end
     AddReminderActions(panel, bewsh)
     AddHeader(panel, "Tell the story now")
-    AddButtons(panel, {
-        { label = "Story to say", width = 110,
-          tip = "Posts the Why boosh story to say chat as one message.",
-          onClick = function() bewsh.TellStory("say") end },
-        { label = "Story to party", width = 110,
-          tip = "Posts the Why boosh story to your party, raid or instance chat, one sentence per message.",
-          onClick = function() bewsh.TellStory("party") end },
-        { label = "Story to guild", width = 110,
-          tip = "Posts the Why boosh story to guild chat, one sentence per message.",
-          onClick = function() bewsh.TellStory("guild") end },
-    })
+    local storyButtons = {}
+    for _, story in ipairs({
+        { "say", "say chat as one message" },
+        { "party", "your party, raid or instance chat, one sentence per message" },
+        { "guild", "guild chat, one sentence per message" },
+    }) do
+        local target = story[1]
+        storyButtons[#storyButtons + 1] = {
+            label = "Story to " .. target, width = 110,
+            tip = "Posts the Why boosh story to " .. story[2] .. ".",
+            onClick = function() bewsh.TellStory(target) end,
+        }
+    end
+    AddButtons(panel, storyButtons)
 end
 
 local function BuildMouseover()
@@ -584,10 +575,7 @@ local function BuildMouseover()
     if not EspiUtils.ready.mouseover then return ModuleOff(panel, "mouseover") end
     local mo = EspiUtils.Mouseover
 
-    local box = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
-    box:SetSize(360, 20)
-    box:SetPoint("TOPLEFT", 22, panel.y)
-    box:SetAutoFocus(false)
+    local box = NewEditBox(panel, 360, 22, panel.y)
     box:SetMaxLetters(200)
     panel.y = panel.y - 30
 
@@ -624,11 +612,7 @@ local function BuildMouseover()
         table.insert(UISpecialFrames, "EspiUtilsSpellPicker")
         _G.EspiUtilsSpellPicker = picker
 
-        local search = CreateFrame("EditBox", nil, picker, "InputBoxTemplate")
-        search:SetSize(330, 20)
-        search:SetPoint("TOPLEFT", 18, -34)
-        search:SetAutoFocus(false)
-        search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        local search = NewEditBox(picker, 330, 18, -34)
 
         local scroll = CreateFrame("ScrollFrame", nil, picker, "UIPanelScrollFrameTemplate")
         scroll:SetPoint("TOPLEFT", 12, -62)
@@ -678,15 +662,17 @@ local function BuildMouseover()
 
         picker.refresh = function()
             local q = strtrim(search:GetText()):lower()
+            local listed = {}
+            for _, e in ipairs(mo.GetList()) do listed[e.name:lower()] = true end
             local n = 0
             for _, e in ipairs(mo.GetSpellbook()) do
-                if q == "" or e.name:lower():find(q, 1, true) then
+                if q == "" or e.lower:find(q, 1, true) then
                     n = n + 1
                     local row = prow[n] or makePickRow(n)
                     row.spell = e.name
                     row.icon:SetTexture(e.icon)
                     row.label:SetText(e.name)
-                    local shade = mo.Has(e.name) and 0.5 or 1 -- dim spells already in the list
+                    local shade = listed[e.lower] and 0.5 or 1 -- dim spells already in the list
                     row.label:SetTextColor(shade, shade, shade)
                     row:Show()
                 end
@@ -704,7 +690,6 @@ local function BuildMouseover()
 
     local addFriendly = act("add")
     box:SetScript("OnEnterPressed", addFriendly)
-    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
     AddNote(panel, "Type spell names (comma separated) or shift-click them in the spellbook, then press Enter (adds as friendly) or pick a button.")
     AddButtons(panel, {
@@ -755,7 +740,7 @@ local function BuildMouseover()
     end
 
     refreshList = function()
-        local spells = mo.GetList() or {}
+        local spells = mo.GetList()
         emptyText:SetShown(#spells == 0)
         for i, e in ipairs(spells) do
             local row = rows[i] or makeRow(i)
@@ -799,7 +784,6 @@ local function Register(main)
 end
 
 function EspiUtils.InitializeOptions()
-    local main = BuildMain()
     BuildFood()
     BuildRebuff()
     BuildTimed()
@@ -808,7 +792,7 @@ function EspiUtils.InitializeOptions()
     BuildQuests()
     BuildMouseover()
     BuildBewsh()
-    Register(main)
+    Register(BuildMain())
     -- Fill every control now so a page never starts blank.
     EspiUtils.RefreshOptions()
 end

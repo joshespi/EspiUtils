@@ -13,7 +13,7 @@ local MACRO_CONSTS = Constants and Constants.MacroConsts or {}
 local MAX_ACCOUNT_MACROS = MACRO_CONSTS.MAX_ACCOUNT_MACROS or 120
 local MAX_CHARACTER_MACROS = MACRO_CONSTS.MAX_CHARACTER_MACROS or 18
 
-local spells -- this class's list, set at login
+local spells -- this class's list, set by InitMouseover
 local pending = false
 
 local say = EspiUtils.Printer("Mouseover", "33ccff")
@@ -147,7 +147,7 @@ local function scanBook()
                 if info and info.itemType == spellType and not info.isPassive
                     and not info.isOffSpec and info.name and not seen[info.name] then
                     seen[info.name] = true
-                    out[#out + 1] = { name = info.name, icon = info.iconID, id = info.spellID }
+                    out[#out + 1] = { name = info.name, lower = info.name:lower(), icon = info.iconID, id = info.spellID }
                 end
             end
         end
@@ -182,7 +182,7 @@ local function resolveSpell(text)
     local function unique(test)
         local hits = {}
         for _, e in ipairs(entries) do
-            if test(e.name:lower()) then hits[#hits + 1] = e.name end
+            if test(e.lower) then hits[#hits + 1] = e.name end
         end
         if #hits == 1 then return hits[1] end
         if #hits > 1 then return nil, hits end
@@ -197,7 +197,7 @@ local function resolveSpell(text)
     local best, bestD, tie
     local maxD = math.min(2, math.floor(#lower / 4)) -- short names get little or no fuzz
     for _, e in ipairs(entries) do
-        local d = distance(lower, e.name:lower())
+        local d = distance(lower, e.lower)
         if d <= maxD then
             if not bestD or d < bestD then
                 best, bestD, tie = e.name, d, false
@@ -306,10 +306,6 @@ local function help()
 end
 
 function EspiUtils.HandleMouseoverCommand(msg)
-    if not spells then
-        say("not ready yet, try again after login finishes")
-        return
-    end
     local cmd, rest = msg:match("^(%S*)%s*(.-)%s*$")
     cmd = cmd:lower()
     if KIND[cmd] then
@@ -325,32 +321,23 @@ function EspiUtils.HandleMouseoverCommand(msg)
     end
 end
 
--- Used by the options screen. Each returns nothing; they report through chat.
+-- Used by the options screen, and only valid once the module is ready
+-- (EspiUtils.ready.mouseover): spells is nil while it is off. Add returns true if the
+-- list changed; the other actions return nothing and report through chat.
 EspiUtils.Mouseover = {
-    Add = function(cmd, text) return spells and add(cmd, text) or false end, -- true if the list changed
-    SetKind = function(spell, kind) if spells then setKind(spell, kind) end end,
-    Remove = function(text) if spells then remove(text) end end,
-    Sync = function() if spells then requestSync(true) end end,
+    Add = add,
+    SetKind = setKind,
+    Remove = remove,
+    Sync = function() requestSync(true) end,
     GetList = function() return spells end,
-    GetSpellbook = function() return getBook() end,
-    Has = function(name) return spells and (find(name)) ~= nil end,
+    GetSpellbook = getBook,
     LABEL = LABEL,
 }
 
 local f = CreateFrame("Frame")
-local db -- EspiUtilsAccountDB.mouseover, set by InitMouseover
 f:SetScript("OnEvent", function(_, event)
     if event == "PLAYER_LOGIN" then
-        db.spells = db.spells or {}
-        local class = UnitClassBase and UnitClassBase("player") or select(2, UnitClass("player"))
-        db.spells[class] = db.spells[class] or {}
-        spells = db.spells[class]
-        for _, e in ipairs(spells) do
-            if not COND[e.kind] then
-                e.kind = "help" -- hand-edited or corrupt SavedVariables
-            end
-        end
-        sync()
+        sync() -- macros can't be read or written before login
     elseif event == "SPELLS_CHANGED" or event == "PLAYER_SPECIALIZATION_CHANGED" then
         book = nil
     elseif pending then
@@ -358,8 +345,14 @@ f:SetScript("OnEvent", function(_, event)
     end
 end)
 
+-- settings: EspiUtilsAccountDB.mouseover
 function EspiUtils.InitMouseover(settings)
-    db = settings
+    spells = EspiUtils.SubTable(EspiUtils.SubTable(settings, "spells"), EspiUtils.PlayerClass)
+    for _, e in ipairs(spells) do
+        if not COND[e.kind] then
+            e.kind = "help" -- hand-edited or corrupt SavedVariables
+        end
+    end
     f:RegisterEvent("PLAYER_LOGIN")
     f:RegisterEvent("PLAYER_REGEN_ENABLED")
     f:RegisterEvent("SPELLS_CHANGED")

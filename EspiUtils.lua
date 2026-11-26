@@ -28,10 +28,26 @@ local LEGACY = {
 }
 EspiUtils.legacy = LEGACY
 EspiUtils.ready = {}
+-- key -> why a legacy-replacing module is off: "legacy" (the old addon is enabled) or "error"
+EspiUtils.offReason = {}
 
-local function PrintLegacyOff(key)
-    local legacy = LEGACY[key]
-    Print(("%s is off: disable the old %s addon and /reload."):format(legacy.title, legacy.addon))
+-- A failing feature must not stop the rest of the addon from loading. Returns whether init ran.
+local function Start(title, init, ...)
+    if xpcall(init, geterrorhandler(), ...) then return true end
+    Print(("%s failed to start. See the error above."):format(title))
+    return false
+end
+
+-- Why a legacy-replacing module is off, for chat and its options page.
+function EspiUtils.ModuleOffText(key)
+    if EspiUtils.offReason[key] == "error" then
+        return "it failed to start. /reload, and report the error if it comes back."
+    end
+    return ("disable the old %s addon in the AddOns list and /reload."):format(LEGACY[key].addon)
+end
+
+local function PrintModuleOff(key)
+    Print(("%s is off: %s"):format(LEGACY[key].title, EspiUtils.ModuleOffText(key)))
 end
 
 local function LegacyEnabled(name)
@@ -54,7 +70,7 @@ end
 -- is retried on every load until there is something to copy or the module
 -- already has its own settings.
 local function Migrate(key, store)
-    store.migrated = type(store.migrated) == "table" and store.migrated or {}
+    EspiUtils.SubTable(store, "migrated")
     local legacy = LEGACY[key]
     local current = store[key]
     if type(current) ~= "table" then
@@ -78,24 +94,22 @@ end
 -- old addon is enabled: its saved data is only complete once it has run.
 local function InitModule(key, init, store)
     if LegacyEnabled(LEGACY[key].addon) then
-        PrintLegacyOff(key)
+        EspiUtils.offReason[key] = "legacy"
+        PrintModuleOff(key)
         return
     end
-    local moduleDB = Migrate(key, store)
-    -- A failing module must not stop the rest of the addon from loading.
-    local ok = xpcall(init, geterrorhandler(), moduleDB)
-    if not ok then
-        Print(("%s failed to start. See the error above."):format(LEGACY[key].title))
-        return
+    if Start(LEGACY[key].title, init, Migrate(key, store)) then
+        EspiUtils.ready[key] = true
+    else
+        EspiUtils.offReason[key] = "error"
     end
-    EspiUtils.ready[key] = true
 end
 
 -- Commands ----------------------------------------------------------------------
 
 local function RunModule(key, message)
     if not EspiUtils.ready[key] then
-        PrintLegacyOff(key)
+        PrintModuleOff(key)
         return
     end
     LEGACY[key].handler(message)
@@ -109,11 +123,11 @@ local MODULE_ALIASES = {
 
 local function PrintHelp()
     Print("/espiutils (or /espi) options - open the settings")
-    Print("/espiutils food [on | off | status | lead <seconds> | test | move | reset]")
-    Print("/espiutils rebuff [on | off | status | lead <seconds> | test | move | reset]")
+    Print("/espiutils food [on | off | status | lead <seconds> | test]")
+    Print("/espiutils rebuff [on | off | status | lead <seconds> | test]")
     Print("/espiutils <posture|water|standup> [on | off | status | interval <minutes> | test]")
     Print("/espiutils move [reset] - move and resize the alert banner (shared by all characters)")
-    Print("/espiutils bags [sort | stop | preview | on | off | quest | hearth | camping | tools | sets | toys | heirloom | conjured | bound | junk | log | debug | probe]")
+    Print("/espiutils bags [sort | stop | preview | on | off | log | debug | probe | help] - help lists the group toggles")
     Print("/espiutils quests [on | off | status | keepeasy | order [low | high]] - sort the quest tracker by level")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
@@ -210,22 +224,16 @@ events:SetScript("OnEvent", function(self, _, name)
     EspiUtilsAccountDB = EspiUtilsAccountDB or {}
     local settings, account = EspiUtilsDB, EspiUtilsAccountDB
 
-    account.general = type(account.general) == "table" and account.general or {}
-    EspiUtils.InitGeneral(account.general)
+    EspiUtils.InitGeneral(EspiUtils.SubTable(account, "general"))
     EspiUtils.Banner.Init(account)
-    -- A failing feature must not stop the rest of the addon from loading.
-    if not xpcall(EspiUtils.InitializeFood, geterrorhandler(), settings) then
-        Print("The food reminder failed to start. See the error above.")
-    end
-    xpcall(EspiUtils.InitializeTimedReminders, geterrorhandler(), settings)
-    if not xpcall(EspiUtils.InitializeRebuff, geterrorhandler(), settings) then
-        Print("Rebuff reminders failed to start. See the error above.")
-    end
+    Start("The food reminder", EspiUtils.InitializeFood, settings)
+    Start("Timed reminders", EspiUtils.InitializeTimedReminders, settings)
+    Start("Rebuff reminders", EspiUtils.InitializeRebuff, settings)
 
     InitModule("bags", EspiUtils.InitBagRules, account)
     InitModule("keep", EspiUtils.InitKeepBagsOpen, settings)
-    xpcall(EspiUtils.InitializeQuestSort, geterrorhandler(), settings)
+    Start("Quest sort", EspiUtils.InitializeQuestSort, settings)
     InitModule("mouseover", EspiUtils.InitMouseover, account)
-    xpcall(EspiUtils.InitializeBewsh, geterrorhandler(), account)
-    xpcall(EspiUtils.InitializeOptions, geterrorhandler())
+    Start("Boosh", EspiUtils.InitializeBewsh, account)
+    Start("The settings window", EspiUtils.InitializeOptions)
 end)

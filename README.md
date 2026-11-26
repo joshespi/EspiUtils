@@ -10,13 +10,13 @@ This addon replaces the standalone EspiBagRules, KeepBagsOpen and MouseoverMacro
 
 Shows a reminder when Well Fed is missing or about to expire. It stays quiet when you carry no food.
 
-`/espiutils food [on | off | status | lead <seconds> | test | move | reset]`
+`/espiutils food [on | off | status | lead <seconds> | test]`
 
 ### Class rebuff reminder
 
 Shows a reminder when a buff your class maintains is missing or about to expire: Priest Fortitude and Inner Fire, Mage Arcane Intellect and armors, Druid Mark of the Wild and Thorns, Warrior Battle Shout. Group buffs are checked on you and on group members who are nearby. For Paladins it only warns when a blessing you cast is running low. Hidden in combat, while dead, and (by default) in rested areas.
 
-`/espiutils rebuff [on | off | status | lead <seconds> | test | move | reset]`
+`/espiutils rebuff [on | off | status | lead <seconds> | test]`
 
 ### Timed reminders
 
@@ -36,7 +36,7 @@ All alerts (Boosh, posture, water, stand up, Well Fed, rebuff) appear in one ban
 
 Bag Rules lets you drag item groups within and between **Top** and **Bottom**. Top starts in the first slot of your general bags and Bottom ends in the last slot. Both follow the list order, with empty slots between them. The order is shared across characters.
 
-By default, Top contains Hearthstone (off by default), Camping, Tools, Equipment Sets, Use-Effect Gear, Heirlooms, Other, and Tradeable Gear. Bottom contains Conjured, Junk, and Bound Gear. Use a row's checkbox to turn its group on or off. "Sort quest items with junk" puts quest items after grey items in the Junk group. Preview shows counts in the saved order.
+By default, Top contains Hearthstone (off by default), Camping, Tools, Equipment Sets, Use-Effect Gear, Heirlooms, Other, Tradeable Gear, and Quest Items. Bottom contains Conjured, Junk, and Bound Gear. Use a row's checkbox to turn its group on or off; with Quest Items off, quest items sort in Other. Preview shows counts in the saved order.
 
 Partial stacks are merged, the reagent and profession bags sort within themselves, and bags set to "Ignore this bag" are left alone. Shift-click Clean Up for Blizzard's sort.
 

@@ -4,7 +4,8 @@
 
 local ADDON, EspiUtils = ...
 
-local db                    -- EspiUtilsDB.keep, set by InitKeepBagsOpen
+local DEFAULTS = { enabled = true, reagent = true }
+local db                   -- EspiUtilsDB.keep, set by InitKeepBagsOpen
 local pendingUser = false   -- a bag toggle ran; record result next frame
 local batch                 -- bag hides seen since last Process
 local scheduled = false
@@ -329,7 +330,7 @@ local function PrintStatus()
     end
 end
 
--- quiet: no chat output (the options page's Defaults).
+-- quiet: no chat output (ResetDefaults).
 local function SetEnabled(on, quiet)
     db.enabled = on and true or false
     -- Whatever is open when you turn it on is what it keeps open. If nothing
@@ -368,6 +369,12 @@ EspiUtils.Keep = {
     SetReagent = SetReagent,
     HasReagentBag = REAGENT_ID ~= nil,
     PrintBlocked = PrintBlocked,
+    -- Through the setters: turning it on reopens the saved bags, and dropping the reagent
+    -- bag updates the kept set.
+    ResetDefaults = function()
+        SetReagent(DEFAULTS.reagent)
+        SetEnabled(DEFAULTS.enabled, true)
+    end,
     ClearBlocked = function()
         wipe(db.blocked)
         Print("blocked actions cleared.")
@@ -390,9 +397,9 @@ end)
 
 function EspiUtils.InitKeepBagsOpen(settings)
     db = settings
-    EspiUtils.ApplyDefaults(db, { enabled = true, reagent = true })
-    db.want = db.want or {}
-    db.blocked = db.blocked or {}
+    EspiUtils.ApplyDefaults(db, DEFAULTS)
+    EspiUtils.SubTable(db, "want")
+    EspiUtils.SubTable(db, "blocked")
     HookAll()
     events:RegisterEvent("LOADING_SCREEN_DISABLED")
     events:RegisterEvent("BAG_UPDATE_DELAYED")

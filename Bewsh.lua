@@ -120,12 +120,8 @@ end)
 
 -- account: EspiUtilsAccountDB; settings live in account.bewsh. Anything that is not a boolean falls back to its default.
 function EspiUtils.InitializeBewsh(account)
-    local store = type(account.bewsh) == "table" and account.bewsh or {}
-    account.bewsh = store
-    for key, default in pairs(DEFAULTS) do
-        if type(store[key]) ~= "boolean" then store[key] = default end
-    end
-    settings = store
+    settings = EspiUtils.SubTable(account, "bewsh")
+    EspiUtils.ApplyDefaults(settings, DEFAULTS, false, true)
     events:RegisterEvent("PLAYER_LEVEL_UP")
 end
 
@@ -208,9 +204,7 @@ function EspiUtils.HandleBewshCommand(action, value)
         api.Set(action, not settings[action])
         Print(("posting \"boosh\" to %s %s."):format(action, OnOff(settings[action])))
     elseif action == "test" then
-        if not api.Preview() then
-            Print("preview available while alive and out of combat.")
-        end
+        if not api.Preview() then EspiUtils.PrintPreviewBlocked() end
     elseif action == "story" then
         TellStory(value:lower())
     elseif action == "" or action == "status" then

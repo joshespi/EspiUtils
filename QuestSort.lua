@@ -6,12 +6,14 @@ local _, EspiUtils = ...
 
 local Print = EspiUtils.Printer("Quest sort", "33ccff")
 
+local DEFAULTS = { enabled = false, order = "asc" }
 local db                -- EspiUtilsDB.questSort
 local scheduled = false
 local sorting = false   -- our own re-adds fire the watch events; ignore them
 local deferred = false  -- wanted a sort during combat
 local passes = 0        -- consecutive sorts that changed the order
-local MAX_PASSES = 3    -- past this, sorting is paused until toggled or the order changes
+local MAX_PASSES = 3    -- past this, sorting pauses until toggled or the order settles
+local paused = false    -- the game wouldn't keep the order
 
 local CQ = C_QuestLog
 
@@ -110,14 +112,15 @@ local function SortNow()
         if q ~= sorted[i] then same = false break end
     end
     if same then
-        passes = 0
+        passes, paused = 0, false
         return
     end
-    if passes > MAX_PASSES then return end
+    if paused then return end
     -- Our own re-adds fire watch events after this returns; if the order never
     -- settles (the game refuses to keep it), stop instead of looping.
     passes = passes + 1
     if passes > MAX_PASSES then
+        paused = true
         Print("the game keeps changing the tracker order back; sorting paused until you toggle it.")
         return
     end
@@ -136,7 +139,7 @@ local function SortNow()
         sorting = true
         for _, q in ipairs(list) do Add(q.key) end
         sorting = false
-        passes = MAX_PASSES + 1
+        paused = true
         Print("the game wouldn't keep the sorted order; sorting paused until you toggle it.")
     end
 end
@@ -147,10 +150,15 @@ local function Schedule()
     C_Timer.After(0, SortNow)
 end
 
+-- Clears the pause so the next sort tries again.
+local function Resume()
+    passes, paused = 0, false
+    if db.enabled then Schedule() end
+end
+
 local function SetEnabled(on)
     db.enabled = on and true or false
-    passes = 0
-    if db.enabled then Schedule() end
+    Resume()
     Print(db.enabled and "on: tracked quests sort by level." or "off: the tracker keeps its current order.")
 end
 
@@ -160,14 +168,13 @@ local ORDER_TEXT = { asc = "lowest level at the top", desc = "highest level at t
 local function SetOrder(order)
     if not ORDER_TEXT[order] then return end
     db.order = order
-    passes = 0
-    if db.enabled then Schedule() end
+    Resume()
     Print(ORDER_TEXT[order] .. "." .. (db.enabled and "" or " Sorting is off; turn it on to apply."))
 end
 
 local function Status()
     Print(("%s, %s.%s"):format(EspiUtils.OnOff(db.enabled), ORDER_TEXT[db.order],
-        passes > MAX_PASSES and " Paused: the game wouldn't keep the order; toggle sorting to try again." or ""))
+        paused and " Paused: the game wouldn't keep the order; toggle sorting to try again." or ""))
 end
 
 local events = CreateFrame("Frame")
@@ -183,10 +190,9 @@ events:SetScript("OnEvent", function(_, event)
 end)
 
 function EspiUtils.InitializeQuestSort(settings)
-    settings.questSort = type(settings.questSort) == "table" and settings.questSort or {}
-    db = settings.questSort
-    EspiUtils.ApplyDefaults(db, { enabled = false, order = "asc" })
-    if not ORDER_TEXT[db.order] then db.order = "asc" end
+    db = EspiUtils.SubTable(settings, "questSort")
+    EspiUtils.ApplyDefaults(db, DEFAULTS)
+    if not ORDER_TEXT[db.order] then db.order = DEFAULTS.order end
     for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_WATCH_LIST_CHANGED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED" }) do
         pcall(events.RegisterEvent, events, event)
     end
@@ -198,13 +204,17 @@ EspiUtils.QuestSort = {
     SetEnabled = SetEnabled,
     SetOrder = SetOrder,
     KeepEasy = KeepEasy,
+    ResetDefaults = function()
+        EspiUtils.ApplyDefaults(db, DEFAULTS, true)
+        Resume()
+    end,
 }
 
 local ORDER_WORDS = { low = "asc", high = "desc" }
 
+-- action is already lowercased by the /espiutils dispatcher.
 function EspiUtils.HandleQuestSortCommand(action, value)
-    action = (action or ""):lower()
-    value = (value or ""):lower()
+    value = value:lower()
     if action == "" then
         SetEnabled(not db.enabled)
     elseif action == "on" then

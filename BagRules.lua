@@ -10,7 +10,6 @@ local LOG_SHOW = 15        -- lines "/espiutils bags log" prints
 local defaults = {
     enabled = true,  -- Clean Up button uses the Espi Utils sort
     depositReagents = false, -- Clean Up at an open bank deposits crafting reagents first
-    questToJunk = false, -- quest items sort with junk at the bottom
     hearthFirst = false, -- group the standard Hearthstone separately (key kept for saved settings)
     camping = true,  -- camping items get their own section at the front
     tools = true,    -- profession and rogue tools get their own section
@@ -20,6 +19,7 @@ local defaults = {
     conjured = true, -- conjured items get their own section
     splitBound = true, -- bound gear separate from tradeable (BoE) gear
     junk = true,     -- grey items get their own section
+    questItems = true, -- quest items get their own section
     debug = false,   -- per-pass detail in chat and the log
 }
 
@@ -49,21 +49,29 @@ local frame = CreateFrame("Frame")
 -- Classification ------------------------------------------------------------
 
 -- Section indices determine layout order. Pinned sections go in the last slots.
-local HEARTH, CAMPING, TOOLS, SETGEAR, TOYGEAR, HEIRLOOM, OTHER, BOE, CONJURED, JUNK, BOUND =
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+-- New sections take the next index: saved orders store these numbers.
+local HEARTH, CAMPING, TOOLS, SETGEAR, TOYGEAR, HEIRLOOM, OTHER, BOE, CONJURED, JUNK, BOUND, QUEST =
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
 
+-- setting: the on/off key in db; command: the /espiutils bags word that toggles it;
+-- desc: what it does, for that command's reply.
 local SECTIONS = {
-    [HEARTH] = { name = "Hearthstone", setting = "hearthFirst", tip = "The standard Hearthstone gets its own group." },
-    [CAMPING] = { name = "Camping", setting = "camping" },
-    [TOOLS] = { name = "Tools", setting = "tools" },
-    [SETGEAR] = { name = "Equipment Sets", setting = "setGear" },
-    [TOYGEAR] = { name = "Use-Effect Gear", setting = "toyGear", tip = "Group gear kept for its Use effect, like guild teleport cloaks." },
-    [HEIRLOOM] = { name = "Heirlooms", setting = "heirloom" },
+    [HEARTH] = { name = "Hearthstone", setting = "hearthFirst", command = "hearth", desc = "Hearthstone group",
+        tip = "The standard Hearthstone gets its own group." },
+    [CAMPING] = { name = "Camping", setting = "camping", command = "camping", desc = "camping items in their own section" },
+    [TOOLS] = { name = "Tools", setting = "tools", command = "tools", desc = "tools in their own section" },
+    [SETGEAR] = { name = "Equipment Sets", setting = "setGear", command = "sets", desc = "equipment-set gear grouped together" },
+    [TOYGEAR] = { name = "Use-Effect Gear", setting = "toyGear", command = "toys", desc = "use-effect gear sorted like a toy",
+        tip = "Group gear kept for its Use effect, like guild teleport cloaks." },
+    [HEIRLOOM] = { name = "Heirlooms", setting = "heirloom", command = "heirloom", desc = "heirlooms in their own section" },
     [OTHER] = { name = "Other" },
     [BOE] = { name = "Tradeable Gear" },
-    [CONJURED] = { name = "Conjured", setting = "conjured" },
-    [JUNK] = { name = "Junk", setting = "junk" },
-    [BOUND] = { name = "Bound Gear", setting = "splitBound", tip = "Off groups bound and tradeable gear together." },
+    [CONJURED] = { name = "Conjured", setting = "conjured", command = "conjured", desc = "conjured items in their own group" },
+    [JUNK] = { name = "Junk", setting = "junk", command = "junk", desc = "grey items in their own group" },
+    [BOUND] = { name = "Bound Gear", setting = "splitBound", command = "bound", desc = "bound gear separate from tradeable gear",
+        tip = "Off groups bound and tradeable gear together." },
+    [QUEST] = { name = "Quest Items", setting = "questItems", command = "quest", desc = "quest items in their own group",
+        tip = "Off sorts quest items in Other." },
 }
 
 local SIDES = { "top", "bottom" }
@@ -71,14 +79,15 @@ local SIDES = { "top", "bottom" }
 local function DefaultOrder(pin)
     local order = { top = {}, bottom = {} }
     for section in ipairs(SECTIONS) do
-        local side = pin and section >= CONJURED and "bottom" or "top"
+        local side = pin and section >= CONJURED and section <= BOUND and "bottom" or "top"
         table.insert(order[side], section)
     end
     return order
 end
 
 -- Returns true when every entry is a known, unique section. Also appends
--- sections missing from the saved order (added in a later version) to the top.
+-- sections missing from the saved order (added in a later version) to the top,
+-- and returns them as a set.
 local function NormalizeOrder(order)
     if type(order) ~= "table" then return false end
     local seen = {}
@@ -93,23 +102,29 @@ local function NormalizeOrder(order)
             seen[section] = true
         end
     end
+    local added = {}
     for section in ipairs(SECTIONS) do
-        if not seen[section] then table.insert(order.top, section) end
+        if not seen[section] then
+            table.insert(order.top, section)
+            added[section] = true
+        end
     end
-    return true
+    return true, added
+end
+
+local function FindSection(section)
+    for _, side in ipairs(SIDES) do
+        for index, id in ipairs(db.order[side]) do
+            if id == section then return side, index end
+        end
+    end
 end
 
 local function MoveSection(section, side, index)
-    for _, source in ipairs(SIDES) do
-        local list = db.order[source]
-        for from, id in ipairs(list) do
-            if id == section then
-                table.remove(list, from)
-                table.insert(db.order[side], index, section)
-                return
-            end
-        end
-    end
+    local from, at = FindSection(section)
+    if not from then return end
+    table.remove(db.order[from], at)
+    table.insert(db.order[side], index, section)
 end
 
 local function SortLayout()
@@ -197,20 +212,13 @@ end
 
 -- no API for this: the tooltip's "Conjured Item" line is the only signal
 local conjured = {} -- itemID -> bool
+local function IsConjuredLine(text) return text == ITEM_CONJURED end
 local function IsConjured(bag, slot, itemID)
     if conjured[itemID] == nil then
-        if not (C_TooltipInfo and C_TooltipInfo.GetBagItem) then return false end
-        local data = C_TooltipInfo.GetBagItem(bag, slot)
-        if not (data and data.lines and #data.lines > 0) then return false end -- not loaded; retry next pass
-        conjured[itemID] = false
-        for _, line in ipairs(data.lines) do
-            if line.leftText == ITEM_CONJURED then
-                conjured[itemID] = true
-                break
-            end
-        end
+        -- nil: not loaded; retry next pass
+        conjured[itemID] = EspiUtils.BagTooltipMatches(bag, slot, IsConjuredLine)
     end
-    return conjured[itemID]
+    return conjured[itemID] == true
 end
 
 local FISHING_POLE = Enum.ItemWeaponSubclass and Enum.ItemWeaponSubclass.Fishingpole or 20
@@ -292,7 +300,7 @@ local function StaticInfo(itemID)
     return s
 end
 
--- reagent and profession bags use Camping, Tools, Other and Junk
+-- reagent and profession bags use Camping, Tools, Other, Junk and Quest Items
 local function Classify(bag, slot, info, sets, general, rules)
     local itemID = info.itemID
     local count = info.stackCount or 1
@@ -310,7 +318,7 @@ local function Classify(bag, slot, info, sets, general, rules)
         classID = classID or 0, subClassID = subClassID or 0,
         ilvl = C_Item.GetCurrentItemLevel(loc) or 0,
         slotOrder = gear and SLOT_ORDER[equipLoc] or 99,
-        setRank = 0, quest = false,
+        setRank = 0,
         reagent = static.reagent == true, -- isCraftingReagent
         maxStack = static.maxStack, family = static.family or 0,
     }
@@ -323,9 +331,8 @@ local function Classify(bag, slot, info, sets, general, rules)
         rec.section = TOOLS
     elseif rules.junk and quality == Enum.ItemQuality.Poor then
         rec.section = JUNK
-    elseif rules.junk and rules.questToJunk and IsQuestItem(bag, slot, classID) then
-        rec.section = JUNK
-        rec.quest = true -- sorts after the grey items
+    elseif rules.questItems and IsQuestItem(bag, slot, classID) then
+        rec.section = QUEST
     elseif not general then
         rec.section = OTHER
     elseif rules.toyGear and TOYGEAR_IDS[itemID] then
@@ -356,7 +363,6 @@ local function Compare(a, b, rank)
         if rank then return rank[a.section] < rank[b.section] end
         return a.section < b.section
     end
-    if a.quest ~= b.quest then return b.quest end -- quest items after the grey ones
     if a.setRank ~= b.setRank then return a.setRank < b.setRank end
     if a.slotOrder ~= b.slotOrder then return a.slotOrder < b.slotOrder end
     if a.classID ~= b.classID then return a.classID < b.classID end
@@ -398,14 +404,15 @@ local function CombinedBagsClosed()
     return UsingCombinedBags() and not ContainerFrameCombinedBags:IsShown()
 end
 
--- Reading order of the combined backpack, from the real buttons.
--- Slots the buttons don't cover keep their fallback order at the end.
+-- Reading order of the combined backpack, from the real buttons, and a description of
+-- where it came from. Slots the buttons don't cover keep their fallback order at the end.
+-- A third value says why the slot order was used instead (nil when the screen was read).
 local function DisplayOrder(slots)
     if not UsingCombinedBags() then
-        return slots, "fallback: combined bags off"
+        return slots, "fallback: combined bags off", "combined bags off"
     end
     if CombinedBagsClosed() then -- only Preview gets here: Sort refuses first
-        return slots, "fallback: bags closed"
+        return slots, "fallback: bags closed", "bags closed"
     end
     local cf = ContainerFrameCombinedBags
 
@@ -471,9 +478,9 @@ local function BuildRegions()
         end
     end
     if #general > 0 then
-        local slots, order = DisplayOrder(general)
+        local slots, order, fallback = DisplayOrder(general)
         local region = NewRegion(slots, true, ("general %d slots (%s)"):format(#slots, order))
-        region.fallback = order:find("^fallback") and order
+        region.fallback = fallback
         table.insert(regions, 1, region)
     end
     return regions
@@ -792,13 +799,13 @@ local function Sort(verbose)
     -- Sort refuses closed combined bags, so the only fallback left is separate
     -- bags, where slot order is the normal layout: no need to say so every time.
     if regions[1].fallback then
-        Debug("sorting by slot order (" .. regions[1].fallback:gsub("^fallback: ", "") .. ")")
+        Debug("sorting by slot order (" .. regions[1].fallback .. ")")
     end
     if db.debug then
         Print("sorting... /espiutils bags stop to cancel")
     end
 
-    local rules = { questToJunk = db.questToJunk }
+    local rules = {}
     for _, section in ipairs(SECTIONS) do
         if section.setting then rules[section.setting] = db[section.setting] end
     end
@@ -980,9 +987,18 @@ end)
 function EspiUtils.InitBagRules(settings)
     db = settings
     EspiUtils.ApplyDefaults(db, defaults)
-    if not NormalizeOrder(db.order) then db.order = DefaultOrder(db.pinBound ~= false) end
+    local valid, added = NormalizeOrder(db.order)
+    if not valid then db.order = DefaultOrder(db.pinBound ~= false) end
     db.pinBound = nil
-    db.log = db.log or {}
+    -- questToJunk (before Quest Items had a group) sorted quest items right after the grey ones
+    if db.questToJunk ~= nil then
+        if (not valid or added[QUEST]) and db.questToJunk and db.junk then
+            local side, index = FindSection(JUNK)
+            MoveSection(QUEST, side, index + 1)
+        end
+        db.questToJunk = nil
+    end
+    EspiUtils.SubTable(db, "log")
     frame:RegisterEvent("PLAYER_LOGIN")
     frame:RegisterEvent("PLAYER_REGEN_DISABLED")
     frame:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
@@ -1005,6 +1021,15 @@ EspiUtils.Bags = {
 
 -- Commands ------------------------------------------------------------------
 
+-- command word -> the section it toggles, from SECTIONS, in section order for the help line
+local TOGGLES, toggleWords = {}, {}
+for _, section in ipairs(SECTIONS) do
+    if section.command then
+        TOGGLES[section.command] = section
+        toggleWords[#toggleWords + 1] = section.command
+    end
+end
+
 local HELP = {
     "/espiutils bags sort - sort your bags now",
     "/espiutils bags stop - cancel a sort in progress",
@@ -1012,24 +1037,10 @@ local HELP = {
     "/espiutils bags probe - list which game APIs this client is missing",
     "/espiutils bags on - Clean Up button uses the Espi Utils sort",
     "/espiutils bags off - Clean Up button uses Blizzard's sort",
-    "/espiutils bags quest - toggle sorting quest items with junk",
-    "/espiutils bags hearth - toggle the Hearthstone group",
-    "/espiutils bags camping | tools | sets | toys | heirloom | conjured | bound | junk - toggle that rule",
+    "/espiutils bags " .. table.concat(toggleWords, " | ") .. " - toggle that group",
     ("/espiutils bags log - show the last %d log lines"):format(LOG_SHOW),
     "/espiutils bags debug - toggle per-pass detail in chat and the log",
     "Shift-click Clean Up for Blizzard's sort",
-}
-
--- command word -> { setting, description }
-local TOGGLES = {
-    camping = { "camping", "camping items in their own section" },
-    tools = { "tools", "tools in their own section" },
-    sets = { "setGear", "equipment-set gear grouped together" },
-    toys = { "toyGear", "use-effect gear sorted like a toy" },
-    heirloom = { "heirloom", "heirlooms in their own section" },
-    conjured = { "conjured", "conjured items in their own group" },
-    bound = { "splitBound", "bound gear separate from tradeable gear" },
-    junk = { "junk", "grey items in their own group" },
 }
 
 function EspiUtils.HandleBagsCommand(msg)
@@ -1045,16 +1056,10 @@ function EspiUtils.HandleBagsCommand(msg)
     elseif cmd == "on" or cmd == "off" then
         db.enabled = cmd == "on"
         Print("Clean Up button override " .. cmd)
-    elseif cmd == "quest" then
-        db.questToJunk = not db.questToJunk
-        Print(db.questToJunk and "quest items sort with junk" or "quest items sort in Other")
-    elseif cmd == "hearth" then
-        db.hearthFirst = not db.hearthFirst
-        Print(db.hearthFirst and "Hearthstone group on" or "Hearthstone group off")
     elseif TOGGLES[cmd] then
-        local key, text = TOGGLES[cmd][1], TOGGLES[cmd][2]
-        db[key] = not db[key]
-        Print(text .. ": " .. EspiUtils.OnOff(db[key]))
+        local section = TOGGLES[cmd]
+        db[section.setting] = not db[section.setting]
+        Print(section.desc .. ": " .. EspiUtils.OnOff(db[section.setting]))
     elseif cmd == "debug" then
         db.debug = not db.debug
         Print("debug " .. EspiUtils.OnOff(db.debug))
@@ -1064,8 +1069,7 @@ function EspiUtils.HandleBagsCommand(msg)
         for i = math.max(1, #log - LOG_SHOW + 1), #log do Print(log[i]) end
     else
         if cmd ~= "" and cmd ~= "help" then Print(("unknown command '%s'"):format(cmd)) end
-        Print(("override %s, quest->junk %s, debug %s"):format(
-            EspiUtils.OnOff(db.enabled), EspiUtils.OnOff(db.questToJunk), EspiUtils.OnOff(db.debug)))
+        Print(("override %s, debug %s"):format(EspiUtils.OnOff(db.enabled), EspiUtils.OnOff(db.debug)))
         for _, line in ipairs(HELP) do Print(line) end
     end
 end

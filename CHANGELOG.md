@@ -1,5 +1,15 @@
 ﻿# Changelog
 
+## 1.11.0
+
+- Bag Rules has a Quest Items group of its own. Drag it anywhere in the group order or untick it to sort quest items in Other (`/espiutils bags quest` toggles it). It replaces "Sort quest items with junk": if you had that on, Quest Items starts right after Junk.
+- The banner's Move and Reset buttons now live only on the main options page, and `/espiutils food move | reset` and `/espiutils rebuff move | reset` are gone. Use `/espiutils move [reset]`.
+- If timed reminders, quest sort or Boosh fail to start, chat now says so, like the other features already did. A Bag Rules, Keep Bags Open or Mouseover Macros page that failed to start says so instead of blaming an old addon.
+- `/espiutils bags hearth` replies like the other group toggles ("Hearthstone group: on"), and the bags help lists every group word on one line.
+- The main options page lists the pages by their real titles.
+- Internal: in a party or solo, the rebuff reminder listens only to your and your party's auras, and it stops listening while it is off or you're in combat. The food reminder also stops listening then, and after a loot it rechecks only the food it found. Both skip rescans on banner events that don't change whether they can show.
+- Internal: shared helpers for saved sub-tables, typed defaults, secret aura checks and bag tooltip scans. Keep Bags Open and Quest Tracker own their defaults.
+
 ## 1.10.0
 
 - Bewsh is now Boosh everywhere you see it: the alert, chat posts (`boosh (<level>)`), the options page and the help. `/espiutils boosh` is the command; `/espiutils bewsh` still works, and your settings carry over.

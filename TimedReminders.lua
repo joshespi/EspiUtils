@@ -106,14 +106,15 @@ local function Restart(reminder, resume)
     end
 end
 
+local function Defaults(definition)
+    return { enabled = true, minutes = definition.minutes }
+end
+
 function EspiUtils.InitializeTimedReminders(settings)
-    settings.timedReminders = settings.timedReminders or {}
+    local store = EspiUtils.SubTable(settings, "timedReminders")
     for _, definition in ipairs(definitions) do
-        local saved = settings.timedReminders[definition.command]
-        if not saved then
-            saved = { enabled = true, minutes = definition.minutes }
-            settings.timedReminders[definition.command] = saved
-        end
+        local saved = EspiUtils.SubTable(store, definition.command)
+        EspiUtils.ApplyDefaults(saved, Defaults(definition))
         if not ValidMinutes(saved.minutes) then
             saved.minutes = definition.minutes
         end
@@ -186,8 +187,7 @@ function EspiUtils.ResetTimedReminders()
     for _, definition in ipairs(definitions) do
         local reminder = reminders[definition.command]
         if reminder then
-            reminder.settings.enabled = true
-            reminder.settings.minutes = definition.minutes
+            EspiUtils.ApplyDefaults(reminder.settings, Defaults(definition), true)
             Restart(reminder)
         end
     end
@@ -222,9 +222,7 @@ function EspiUtils.HandleTimedReminderCommand(command, action, value)
             Print(("Enter a whole number from 1 to %d minutes."):format(MAX_MINUTES))
         end
     elseif action == "test" then
-        if not EspiUtils.TestTimedReminder(command) then
-            Print("Preview available while alive and out of combat.")
-        end
+        if not EspiUtils.TestTimedReminder(command) then EspiUtils.PrintPreviewBlocked() end
     elseif action == "" or action == "status" then
         Print(("%s reminders %s. Interval: %d min."):format(
             reminder.label, saved.enabled and "enabled" or "disabled", saved.minutes

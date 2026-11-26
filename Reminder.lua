@@ -33,16 +33,15 @@ EspiUtils.General = {
 
 -- store: EspiUtilsAccountDB.general. Anything that is not a boolean falls back to its default.
 function EspiUtils.InitGeneral(store)
-    for key, default in pairs(GENERAL_DEFAULTS) do
-        if type(store[key]) ~= "boolean" then store[key] = default end
-    end
+    EspiUtils.ApplyDefaults(store, GENERAL_DEFAULTS, false, true)
     general = store
 end
 
 -- Shared pieces of the Food and Rebuff reminders ------------------------------------
--- o.key: settings key; o.label: "Food"; o.defaults: saved defaults; o.maxLead;
--- o.settings(): the saved table (nil before load); o.update(): re-evaluate the alert;
--- o.preview(): show a 5 second preview.
+-- o.key: the banner key (not read yet); o.command: the slash command word; o.label: "Food";
+-- o.defaults: saved defaults; o.maxLead; o.settings(): the saved table (nil before load);
+-- o.update(): re-evaluate the alert; o.preview(): show a 5 second preview;
+-- o.previewNote: optional text added to the "preview available" message.
 -- Returns the settings API used by the slash command and the options screen.
 function EspiUtils.NewBuffReminderAPI(o)
     local api = { MAX_LEAD = o.maxLead, GetSettings = o.settings }
@@ -93,14 +92,8 @@ function EspiUtils.HandleBuffReminderCommand(o, action, value)
             return
         end
         Print(seconds == 0 and "Missing-buff reminders only." or ("Expiry warning set to %d seconds."):format(seconds))
-    elseif action == "move" then
-        EspiUtils.Banner.ToggleMove()
-    elseif action == "reset" then
-        EspiUtils.Banner.ResetPosition()
     elseif action == "test" then
-        if not api.Preview() then
-            Print("Preview available while alive and out of combat" .. (o.previewNote or "") .. ".")
-        end
+        if not api.Preview() then EspiUtils.PrintPreviewBlocked(o.previewNote) end
     elseif action == "" or action == "status" then
         Print(("%s reminders %s. Expiry warning: %s.%s"):format(
             o.label,
@@ -109,13 +102,18 @@ function EspiUtils.HandleBuffReminderCommand(o, action, value)
             o.statusExtra and o.statusExtra() or ""
         ))
     else
-        Print(("Use /espiutils %s [on | off | status | lead <seconds> | test | move | reset]."):format(o.command))
+        Print(("Use /espiutils %s [on | off | status | lead <seconds> | test]."):format(o.command))
     end
 end
 
 -- Previews ignore the hide options but still wait for a calm moment.
 function EspiUtils.CanPreviewReminder()
     return not InCombatLockdown() and not UnitIsDeadOrGhost("player")
+end
+
+-- note: optional text before the full stop (", for classes with tracked buffs").
+function EspiUtils.PrintPreviewBlocked(note)
+    EspiUtils.Print("Preview available while alive and out of combat" .. (note or "") .. ".")
 end
 
 function EspiUtils.Print(message)
@@ -145,8 +143,40 @@ function EspiUtils.IsWholeInRange(value, min, max)
 end
 
 -- Fills keys missing from db; with overwrite, resets every key to its default.
-function EspiUtils.ApplyDefaults(db, defaults, overwrite)
+-- typed: also resets values whose type differs from the default's (hand-edited saves).
+function EspiUtils.ApplyDefaults(db, defaults, overwrite, typed)
     for k, v in pairs(defaults) do
-        if overwrite or db[k] == nil then db[k] = v end
+        if overwrite or db[k] == nil or (typed and type(db[k]) ~= type(v)) then db[k] = v end
     end
+end
+
+-- store[key] as a table, replacing a missing or non-table value with an empty one.
+function EspiUtils.SubTable(store, key)
+    if type(store[key]) ~= "table" then store[key] = {} end
+    return store[key]
+end
+
+-- Game state shared by several modules ------------------------------------------------
+
+EspiUtils.PlayerClass = UnitClassBase and UnitClassBase("player") or select(2, UnitClass("player"))
+
+-- Clients without secret values never hide them.
+EspiUtils.IsSecret = issecretvalue or function() return false end
+
+-- True while the client hides aura data from addons.
+function EspiUtils.AurasSecret()
+    return C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() or false
+end
+
+-- Whether any left-hand line of a bag item's tooltip passes test(text). Returns nil when the
+-- tooltip API is missing or the item's data hasn't loaded yet (worth asking again later).
+function EspiUtils.BagTooltipMatches(bag, slot, test)
+    if not (C_TooltipInfo and C_TooltipInfo.GetBagItem) then return nil end
+    local data = C_TooltipInfo.GetBagItem(bag, slot)
+    if not (data and data.lines and #data.lines > 0) then return nil end
+    for _, line in ipairs(data.lines) do
+        local text = line.leftText
+        if text and not EspiUtils.IsSecret(text) and test(text) then return true end
+    end
+    return false
 end
