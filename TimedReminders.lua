@@ -8,6 +8,7 @@ local STAGGER_SECONDS = 120
 local definitions = {
     {
         command = "posture",
+        label = "Posture", -- short name for chat messages
         title = "Posture check",
         detail = "Sit tall and relax your shoulders.",
         icon = "Interface\\Icons\\INV_Misc_PocketWatch_01",
@@ -15,6 +16,7 @@ local definitions = {
     },
     {
         command = "water",
+        label = "Water",
         title = "Drink water",
         detail = "Take a sip of water.",
         icon = "Interface\\Icons\\INV_Drink_07",
@@ -22,6 +24,7 @@ local definitions = {
     },
     {
         command = "standup",
+        label = "Stand up",
         title = "Stand up",
         detail = "Stand up and stretch your legs.",
         icon = "Interface\\Icons\\Ability_Rogue_Sprint",
@@ -34,19 +37,7 @@ local function ValidMinutes(m)
     return EspiUtils.IsWholeInRange(m, 1, MAX_MINUTES)
 end
 
-local function CanShow()
-    return EspiUtils.CanShowReminder(true)
-end
-
-local function Dismiss(reminder)
-    EspiUtils.Banner.Dismiss(reminder.alert.key)
-end
-
-local Fire, Snooze
-
-local function Show(reminder)
-    EspiUtils.Banner.Push(reminder.alert)
-end
+local Fire
 
 -- Pushes due later until no other reminder is due within STAGGER_SECONDS,
 -- so reminders with the same interval or clock don't all fire at once.
@@ -70,7 +61,7 @@ local function Schedule(reminder, delay)
     reminder.intervalTimer = C_Timer.NewTimer(reminder.dueAt - now, function()
         reminder.intervalTimer = nil
         reminder.dueAt = nil
-        if CanShow() then
+        if EspiUtils.Banner.CanShow(true) then
             Fire(reminder)
         else
             reminder.pending = true
@@ -82,12 +73,12 @@ end
 -- short play sessions still get their reminders.
 function Fire(reminder)
     reminder.settings.lastShown = GetServerTime()
-    Show(reminder)
+    EspiUtils.Banner.Push(reminder.alert)
     Schedule(reminder)
 end
 
 -- Pushes the next reminder back by at least SNOOZE_MINUTES (staggering may add more).
-function Snooze(reminder)
+local function Snooze(reminder)
     if reminder.intervalTimer then reminder.intervalTimer:Cancel() end
     reminder.pending = false
     Schedule(reminder, SNOOZE_MINUTES * 60)
@@ -111,7 +102,7 @@ local function Restart(reminder, resume)
         end
         Schedule(reminder, delay)
     else
-        Dismiss(reminder)
+        EspiUtils.Banner.Dismiss(reminder.alert.key)
     end
 end
 
@@ -126,7 +117,7 @@ function EspiUtils.InitializeTimedReminders(settings)
         if not ValidMinutes(saved.minutes) then
             saved.minutes = definition.minutes
         end
-        local reminder = { settings = saved, title = definition.title }
+        local reminder = { settings = saved, label = definition.label }
         -- Left-click dismisses the banner; right-click also delays the next reminder.
         reminder.alert = {
             key = definition.command,
@@ -134,6 +125,7 @@ function EspiUtils.InitializeTimedReminders(settings)
             text = definition.detail,
             icon = definition.icon,
             duration = DISPLAY_SECONDS,
+            timed = true, -- waits while AFK, obeys "hide in instances"
             onRightClick = function()
                 if saved.enabled then Snooze(reminder) end
             end,
@@ -143,19 +135,18 @@ function EspiUtils.InitializeTimedReminders(settings)
     end
 end
 
-function EspiUtils.RefreshTimedReminders(event)
-    local interrupted = event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_DEAD"
-    local blocked = interrupted or not CanShow()
+-- Reminders that came due while blocked fire once alerts may show again. One that
+-- was on screen when it got blocked is paused by the banner and comes back on its own.
+EspiUtils.Banner.OnVisibilityChanged(function()
+    if not EspiUtils.Banner.CanShow(true) then return end
     for _, reminder in pairs(reminders) do
-        if blocked then
-            Dismiss(reminder)
-        elseif reminder.pending then
+        if reminder.pending then
             -- Schedule (not Fire) so reminders that piled up while blocked stagger.
             reminder.pending = false
             Schedule(reminder, 0)
         end
     end
-end
+end)
 
 -- API shared by the slash command and the options screen.
 EspiUtils.TimedReminderMaxMinutes = MAX_MINUTES
@@ -206,7 +197,9 @@ end
 function EspiUtils.TestTimedReminder(command)
     local reminder = reminders[command]
     if not reminder or not EspiUtils.CanPreviewReminder() then return false end
-    Show(reminder)
+    local preview = CopyTable(reminder.alert)
+    preview.preview = true -- shows even while AFK or in an instance
+    EspiUtils.Banner.Push(preview)
     return true
 end
 
@@ -220,11 +213,11 @@ function EspiUtils.HandleTimedReminderCommand(command, action, value)
     if action == "on" or action == "off" then
         local enabled = action == "on"
         EspiUtils.SetTimedReminderEnabled(command, enabled)
-        Print(("%s reminders %s."):format(reminder.title, enabled and "enabled" or "disabled"))
+        Print(("%s reminders %s."):format(reminder.label, enabled and "enabled" or "disabled"))
     elseif action == "interval" then
         local minutes = tonumber(value)
         if EspiUtils.SetTimedReminderMinutes(command, minutes) then
-            Print(("%s interval set to %d min."):format(reminder.title, minutes))
+            Print(("%s interval set to %d min."):format(reminder.label, minutes))
         else
             Print(("Enter a whole number from 1 to %d minutes."):format(MAX_MINUTES))
         end
@@ -234,7 +227,7 @@ function EspiUtils.HandleTimedReminderCommand(command, action, value)
         end
     elseif action == "" or action == "status" then
         Print(("%s reminders %s. Interval: %d min."):format(
-            reminder.title, saved.enabled and "enabled" or "disabled", saved.minutes
+            reminder.label, saved.enabled and "enabled" or "disabled", saved.minutes
         ))
     else
         Print(("Use /espiutils %s [on | off | status | interval <minutes> | test]."):format(command))

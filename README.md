@@ -10,27 +10,27 @@ This addon replaces the standalone EspiBagRules, KeepBagsOpen and MouseoverMacro
 
 Shows a reminder when Well Fed is missing or about to expire. It stays quiet when you carry no food.
 
-`/espiutils food [on | off | status | lead <seconds> | move | reset]`
+`/espiutils food [on | off | status | lead <seconds> | test | move | reset]`
 
 ### Class rebuff reminder
 
 Shows a reminder when a buff your class maintains is missing or about to expire: Priest Fortitude and Inner Fire, Mage Arcane Intellect and armors, Druid Mark of the Wild and Thorns, Warrior Battle Shout. Group buffs are checked on you and on group members who are nearby. For Paladins it only warns when a blessing you cast is running low. Hidden in combat, while dead, and (by default) in rested areas.
 
-`/espiutils rebuff [on | off | status | lead <seconds> | move | reset]`
+`/espiutils rebuff [on | off | status | lead <seconds> | test | move | reset]`
 
 ### Timed reminders
 
-Posture and water reminders that show for a few seconds at an interval, once you are alive and out of combat. Click a shown reminder to dismiss it; right-click to dismiss it and delay the next one by 5 minutes. They wait while you are AFK, and all reminders wait during cinematics.
+Posture, water and stand up reminders that show for a few seconds at an interval, once you are alive and out of combat. Click a shown reminder to dismiss it; right-click to dismiss it and delay the next one by 5 minutes. They wait while you are AFK, and all reminders wait during cinematics.
 
 `/espiutils <posture|water|standup> [on | off | status | interval <minutes> | test]`
 
 ### Reminder options
 
-On the main settings page: play a sound when a reminder appears, hide reminders while mounted, hide them in battlegrounds and arenas, and hide the posture and water reminders in instances. All are off by default. `/espiutils food test` and `/espiutils rebuff test` preview a reminder for a few seconds; `/espiutils version` prints the version.
+On the main settings page: play a sound when a reminder appears, hide reminders while mounted, hide them in battlegrounds and arenas, and hide the posture, water and stand up reminders in instances. All are off by default. `/espiutils food test` and `/espiutils rebuff test` preview a reminder for a few seconds; `/espiutils version` prints the version.
 
 ### Moving and resizing reminders
 
-All alerts (Bewsh, posture, water, stand up, Well Fed, rebuff) appear in one banner and queue in order. `/espiutils move` shows the banner: drag it to move it, scroll over it to resize it, and right-click it (or run `/espiutils move` again) to lock. The position and size are saved account-wide, so every character uses the same layout. `/espiutils move reset` puts it back.
+All alerts (Boosh, posture, water, stand up, Well Fed, rebuff) appear in one banner and queue in order. `/espiutils move` shows the banner: drag it to move it, scroll over it to resize it, and right-click it (or run `/espiutils move` again) to lock. The position and size are saved account-wide, so every character uses the same layout. `/espiutils move reset` puts it back.
 
 ### Bag Rules
 
@@ -54,7 +54,7 @@ Bags only close when you close them. When the game closes your bags (vendor, mai
 
 ### Quest Tracker
 
-Sorts the quest tracker by quest level, lowest first (off by default). Tick it on the Quest Tracker page or use `/espiutils quests [on | off | status]` (no argument toggles). It reorders your tracked quests, so turning it off leaves the current order in place.
+Sorts the quest tracker by quest level (off by default), with the lowest level at the top or, with "Highest level at the top", the highest. Tick it on the Quest Tracker page or use `/espiutils quests [on | off | status | order [low | high]]` (no argument toggles sorting; `order` with no argument flips the direction). It reorders your tracked quests, so turning it off leaves the current order in place.
 
 The "Untrack non-green quests" button (`/espiutils quests keepeasy`) untracks every tracked quest that is yellow, orange or red for your level and keeps the green and grey ones. It never adds quests.
 
@@ -71,13 +71,13 @@ Keeps a character macro named `MO <spell>` for each spell in a per-class list:
 
 Typed spell names are matched against your spellbook and near-misses are corrected. On the settings page, "Pick spells" lists your spellbook with Friendly and Hostile buttons; or type spells and press Enter (friendly) or use the Add buttons; each listed spell has an X to remove it and a button to switch it between friendly and hostile.
 
-### Bewsh
+### Boosh
 
-Everyone says "ding" when they level, a habit from the EverQuest days. Back in vanilla WoW, Espi joked that it's really more of a "boosh" noise, and it stuck. Bewsh is that word, spelled the way it sounds.
+Everyone says "ding" when they level, a habit from the EverQuest days. Back in vanilla WoW, Espi joked that it's really more of a "boosh" noise, and it stuck.
 
-When you level up, a "Bewsh!" alert tells you that you bewshed (hover over it for the story; click to dismiss). Optionally post `bewsh (<level>)` to guild chat, group chat, or both. Group posts go to your party or raid, or to instance chat if you only have a matchmaking group. Both chat options are off by default. If combat locks chat, posts wait until combat ends.
+When you level up, a "Boosh!" alert tells you that you booshed (hover over it for the story; click to dismiss). Optionally post `boosh (<level>)` to guild chat, group chat, or both. Group posts go to your party or raid, or to instance chat if you only have a matchmaking group. Both chat options are off by default. If combat locks chat, posts wait until combat ends.
 
-`/espiutils bewsh [on | off | status | guild | party | test | story [say | party | guild]]` (`/espiutils boosh` works too). `story` prints the story to you; add `say`, `party` or `guild` to post it there instead (`say` posts it as one message; party and guild get one sentence per message).
+`/espiutils boosh [on | off | status | guild | party | test | story [say | party | guild]]` (`/espiutils bewsh` works too). `story` prints the story to you; add `say`, `party` or `guild` to post it there instead (`say` posts it as one message; party and guild get one sentence per message).
 
 ## Install
 

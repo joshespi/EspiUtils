@@ -1,78 +1,5 @@
 local addonName, EspiUtils = ...
-local MAX_LEAD = 300
-local FOOD_DEFAULTS = { enabled = true, hideResting = true, lead = 60 }
 local Print = EspiUtils.Print
-
-local events = CreateFrame("Frame")
-local Tiles = EspiUtils.Tiles
-
-local settings
-local timer
-local auraPending = false
-
-local function ShowReminder(message)
-    EspiUtils.Banner.Push({
-        key = "food", title = "Well Fed", text = message, icon = "Interface\\Icons\\INV_Misc_Fork&Knife",
-    })
-end
-
-local function HideReminder()
-    EspiUtils.Banner.Dismiss("food")
-end
-
-local function CancelTimer()
-    if timer then
-        timer:Cancel()
-        timer = nil
-    end
-end
-
-local function UpdateReminder()
-    CancelTimer()
-    if not EspiUtils.CanShowReminder() then
-        HideReminder()
-        return
-    end
-    if not settings.enabled or (settings.hideResting and IsResting()) then
-        HideReminder()
-        return
-    end
-
-    local state, remaining = EspiUtils.GetFoodState()
-    if state == "missing" then
-        ShowReminder("Food buff missing")
-        return
-    end
-    if not remaining then
-        HideReminder()
-        return
-    end
-    -- remaining is always > 0 here, so a lead of 0 never shows the countdown.
-    local delay
-    if remaining <= settings.lead then
-        local seconds = math.ceil(remaining)
-        ShowReminder(("Expires in %d:%02d"):format(math.floor(seconds / 60), seconds % 60))
-        delay = remaining - seconds + 1
-    else
-        HideReminder()
-        delay = remaining - settings.lead
-    end
-    timer = C_Timer.NewTimer(math.max(0.05, delay), UpdateReminder)
-end
-
--- Food reminder API, shared by the slash command and the options screen.
-local foodOptions = {
-    key = "food", command = "food", label = "Food",
-    defaults = FOOD_DEFAULTS, maxLead = MAX_LEAD,
-    settings = function() return settings end,
-    update = UpdateReminder,
-    preview = function()
-        CancelTimer()
-        ShowReminder("Preview")
-        timer = C_Timer.NewTimer(5, UpdateReminder)
-    end,
-}
-EspiUtils.Food = EspiUtils.NewBuffReminderAPI(foodOptions)
 
 -- Modules ---------------------------------------------------------------------
 
@@ -185,12 +112,12 @@ local function PrintHelp()
     Print("/espiutils food [on | off | status | lead <seconds> | test | move | reset]")
     Print("/espiutils rebuff [on | off | status | lead <seconds> | test | move | reset]")
     Print("/espiutils <posture|water|standup> [on | off | status | interval <minutes> | test]")
-    Print("/espiutils move [reset] - move and resize the reminders (shared by all characters)")
+    Print("/espiutils move [reset] - move and resize the alert banner (shared by all characters)")
     Print("/espiutils bags [sort | stop | preview | on | off | quest | hearth | camping | tools | sets | toys | heirloom | conjured | bound | junk | log | debug | probe]")
-    Print("/espiutils quests [on | off | status] - sort the quest tracker by level")
+    Print("/espiutils quests [on | off | status | keepeasy | order [low | high]] - sort the quest tracker by level")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
-    Print("/espiutils bewsh (or boosh) " .. EspiUtils.Bewsh.Usage .. " - level-up notification")
+    Print("/espiutils boosh (or bewsh) " .. EspiUtils.Bewsh.Usage .. " - level-up notification")
     Print("/espiutils version")
 end
 
@@ -199,32 +126,14 @@ local function GetVersion()
     return get and get(addonName, "Version") or "unknown"
 end
 
--- Prints the outcome; returns whether the tiles are now unlocked.
-function EspiUtils.ToggleTileMove()
-    local unlocked, refused = Tiles.Toggle()
-    if refused then
-        Print(refused)
-    elseif unlocked then
-        Print("Drag the alert banner to move it, scroll over it to resize. Right-click it or use /espiutils move to lock.")
-    else
-        Print("Banner locked.")
-    end
-    return unlocked
-end
-
 local function HandleMove(action)
     if action == "" then
-        EspiUtils.ToggleTileMove()
+        EspiUtils.Banner.ToggleMove()
     elseif action == "reset" then
-        Tiles.Reset()
-        Print("Reminder positions and sizes reset.")
+        EspiUtils.Banner.ResetPosition()
     else
         Print("Use /espiutils move [reset].")
     end
-end
-
-local function HandleFood(action, value)
-    EspiUtils.HandleBuffReminderCommand(foodOptions, action, value)
 end
 
 SLASH_ESPIUTILS1 = "/espiutils"
@@ -237,9 +146,9 @@ SlashCmdList.ESPIUTILS = function(message)
     action = action:lower()
 
     if command == "food" then
-        HandleFood(action, value)
+        EspiUtils.HandleFoodCommand(action, value)
     elseif command == "quests" or command == "quest" then
-        EspiUtils.HandleQuestSortCommand(action)
+        EspiUtils.HandleQuestSortCommand(action, value)
     elseif command == "rebuff" then
         EspiUtils.HandleRebuffCommand(action, value)
     elseif command == "move" then
@@ -290,114 +199,33 @@ function EspiUtils_OnCompartmentLeave()
     GameTooltip:Hide()
 end
 
--- Events ------------------------------------------------------------------------
+-- Loading ---------------------------------------------------------------------
 
-local function OnAurasSettled()
-    auraPending = false
-    UpdateReminder()
-end
-
+local events = CreateFrame("Frame")
 events:RegisterEvent("ADDON_LOADED")
-events:SetScript("OnEvent", function(self, event, ...)
-    if event == "ADDON_LOADED" then
-        if ... ~= addonName then
-            return
-        end
-        self:UnregisterEvent("ADDON_LOADED")
-        EspiUtilsDB = EspiUtilsDB or {}
-        EspiUtilsAccountDB = EspiUtilsAccountDB or {}
-        settings = EspiUtilsDB
-        local account = EspiUtilsAccountDB
+events:SetScript("OnEvent", function(self, _, name)
+    if name ~= addonName then return end
+    self:UnregisterEvent("ADDON_LOADED")
+    EspiUtilsDB = EspiUtilsDB or {}
+    EspiUtilsAccountDB = EspiUtilsAccountDB or {}
+    local settings, account = EspiUtilsDB, EspiUtilsAccountDB
 
-        -- hideResting now defaults to on; carry existing characters over once.
-        if not settings.hideRestingMigrated then
-            settings.hideRestingMigrated = true
-            settings.hideResting = true
-        end
-        EspiUtils.ApplyDefaults(settings, FOOD_DEFAULTS)
-        -- SavedVariables can be hand-edited or corrupt: fall back to defaults.
-        if not EspiUtils.IsWholeInRange(settings.lead, 0, MAX_LEAD) then
-            settings.lead = FOOD_DEFAULTS.lead
-        end
-        account.tiles = type(account.tiles) == "table" and account.tiles or {}
-        settings.x, settings.y = nil, nil
-        account.general = type(account.general) == "table" and account.general or {}
-        EspiUtils.InitGeneral(account.general)
-        EspiUtils.InitTiles(account.tiles)
-        EspiUtils.InitializeTimedReminders(settings)
-        if not xpcall(EspiUtils.InitializeRebuff, geterrorhandler(), settings) then
-            Print("Rebuff reminders failed to start. See the error above.")
-        end
-
-        InitModule("bags", EspiUtils.InitBagRules, account)
-        InitModule("keep", EspiUtils.InitKeepBagsOpen, settings)
-        xpcall(EspiUtils.InitializeQuestSort, geterrorhandler(), settings)
-        InitModule("mouseover", EspiUtils.InitMouseover, account)
-        xpcall(EspiUtils.InitializeBewsh, geterrorhandler(), account)
-        xpcall(EspiUtils.InitializeOptions, geterrorhandler())
-
-        self:RegisterUnitEvent("UNIT_AURA", "player")
-        self:RegisterEvent("PLAYER_ENTERING_WORLD")
-        self:RegisterEvent("PLAYER_UPDATE_RESTING")
-        self:RegisterEvent("PLAYER_REGEN_DISABLED")
-        self:RegisterEvent("PLAYER_REGEN_ENABLED")
-        self:RegisterEvent("PLAYER_DEAD")
-        self:RegisterEvent("PLAYER_ALIVE")
-        self:RegisterEvent("PLAYER_UNGHOST")
-        self:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
-        self:RegisterEvent("SPELL_DATA_LOAD_RESULT")
-        self:RegisterEvent("BAG_UPDATE_DELAYED")
-        for _, visibilityEvent in ipairs(EspiUtils.VISIBILITY_EVENTS) do
-            pcall(self.RegisterEvent, self, visibilityEvent)
-        end
-        pcall(self.RegisterEvent, self, "PLAYER_CONTROL_LOST")
-        pcall(self.RegisterEvent, self, "PLAYER_CONTROL_GAINED")
-        -- Posture and water reminders wait while AFK.
-        pcall(self.RegisterUnitEvent, self, "PLAYER_FLAGS_CHANGED", "player")
-        if C_Spell and C_Spell.RequestLoadSpellData then
-            C_Spell.RequestLoadSpellData(EspiUtils.wellFedSpellID)
-        end
-        if IsPlayerInWorld() then
-            UpdateReminder()
-        end
-    elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
-        -- This event can run just before the new restriction is enforced.
-        HideReminder()
-        C_Timer.After(0, UpdateReminder)
-    elseif event == "SPELL_DATA_LOAD_RESULT" then
-        -- Only the Well Fed name is needed, and only once.
-        if ... == EspiUtils.wellFedSpellID then
-            self:UnregisterEvent("SPELL_DATA_LOAD_RESULT")
-            UpdateReminder()
-        end
-    elseif event == "BAG_UPDATE_DELAYED" then
-        EspiUtils.InvalidateFoodItems()
-        if IsPlayerInWorld() then
-            UpdateReminder()
-        end
-    elseif event == "UNIT_AURA" then
-        -- Aura events arrive in bursts; update once after they settle.
-        if not auraPending then
-            auraPending = true
-            C_Timer.After(0.2, OnAurasSettled)
-        end
-    else
-        if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_DEAD" then
-            Tiles.Lock()
-        end
-        EspiUtils.TrackCinematic(event)
-        if event == "PLAYER_ENTERING_WORLD" then
-            EspiUtils.SetCinematic(false)
-        end
-        EspiUtils.RefreshTimedReminders(event)
-        EspiUtils.Banner.Refresh()
-        if event == "PLAYER_REGEN_DISABLED" then
-            -- InCombatLockdown() is still false during this event, so
-            -- UpdateReminder would show the reminder as combat starts.
-            CancelTimer()
-            HideReminder()
-        else
-            UpdateReminder()
-        end
+    account.general = type(account.general) == "table" and account.general or {}
+    EspiUtils.InitGeneral(account.general)
+    EspiUtils.Banner.Init(account)
+    -- A failing feature must not stop the rest of the addon from loading.
+    if not xpcall(EspiUtils.InitializeFood, geterrorhandler(), settings) then
+        Print("The food reminder failed to start. See the error above.")
     end
+    xpcall(EspiUtils.InitializeTimedReminders, geterrorhandler(), settings)
+    if not xpcall(EspiUtils.InitializeRebuff, geterrorhandler(), settings) then
+        Print("Rebuff reminders failed to start. See the error above.")
+    end
+
+    InitModule("bags", EspiUtils.InitBagRules, account)
+    InitModule("keep", EspiUtils.InitKeepBagsOpen, settings)
+    xpcall(EspiUtils.InitializeQuestSort, geterrorhandler(), settings)
+    InitModule("mouseover", EspiUtils.InitMouseover, account)
+    xpcall(EspiUtils.InitializeBewsh, geterrorhandler(), account)
+    xpcall(EspiUtils.InitializeOptions, geterrorhandler())
 end)

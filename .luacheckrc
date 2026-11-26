@@ -10,7 +10,7 @@ read_globals = {
     -- functions
     "AddQuestWatch", "RemoveQuestWatch", "GetNumQuestWatches", "GetQuestIndexForWatch", "GetQuestLogTitle", "ClearCursor", "CopyTable", "CreateFrame", "CreateMacro", "DeleteMacro", "EditMacro",
     "GetBuildInfo", "GetContainerNumSlots", "GetCursorInfo", "GetCursorPosition", "GetItemFamily", "GetMacroBody",
-    "GetMacroIndexByName", "GetNumMacros", "GetServerTime", "GetTime", "GetUIPanel",
+    "GetMacroIndexByName", "GetMacroInfo", "GetNumMacros", "GetServerTime", "GetTime", "GetUIPanel",
     "HideUIPanel", "InCombatLockdown", "InterfaceOptionsFrame_OpenToCategory",
     "InterfaceOptions_AddCategory", "IsAddOnLoaded", "IsBagOpen", "IsPlayerInWorld",
     "IsResting", "IsShiftKeyDown", "OpenBag", "PlaySound", "ToggleGameMenu", "UnitClass",

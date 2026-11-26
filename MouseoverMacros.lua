@@ -58,7 +58,33 @@ local function macroIndex(name)
     return idx
 end
 
-local function sync()
+-- A character macro this addon made: "MO " name and the exact body macroBody writes.
+-- Hand-made macros that happen to start with "MO " are left alone.
+local function isOurMacro(name, body)
+    if not name or name:sub(1, #PREFIX) ~= PREFIX then return false end
+    local tip, kind, cast = strtrim(body or ""):match("^#showtooltip (.-)\n/cast %[@mouseover,(%a+),nodead%]%[%] (.+)$")
+    return tip ~= nil and COND[kind] ~= nil and tip == cast
+end
+
+-- Deletes this addon's character macros for spells no longer in the list, for example
+-- spells removed on another character of the same class. Returns how many were deleted.
+local function prune(numChar)
+    local wanted = {}
+    for _, e in ipairs(spells) do wanted[macroName(e.name)] = true end
+    local removed = 0
+    -- Highest index first: deleting a macro shifts the ones after it down.
+    for idx = MAX_ACCOUNT_MACROS + numChar, MAX_ACCOUNT_MACROS + 1, -1 do
+        local name, _, body = GetMacroInfo(idx)
+        if not wanted[name] and isOurMacro(name, body) then
+            DeleteMacro(idx)
+            removed = removed + 1
+        end
+    end
+    return removed
+end
+
+-- verbose: also report when nothing needed to change (the sync command and button).
+local function sync(verbose)
     if InCombatLockdown() then
         pending = true
         return false
@@ -67,6 +93,8 @@ local function sync()
 
     local made, updated = 0, 0
     local _, numChar = GetNumMacros()
+    local removed = prune(numChar)
+    numChar = numChar - removed
     for _, e in ipairs(spells) do
         local name, body = macroName(e.name), macroBody(e.name, e.kind)
         local idx = macroIndex(name)
@@ -86,14 +114,16 @@ local function sync()
         end
     end
 
-    if made + updated > 0 then
-        say(("macros synced: %d created, %d updated"):format(made, updated))
+    if made + updated + removed > 0 then
+        say(("macros synced: %d created, %d updated, %d removed"):format(made, updated, removed))
+    elseif verbose then
+        say("macros up to date")
     end
     return true
 end
 
-local function requestSync()
-    if not sync() then
+local function requestSync(verbose)
+    if not sync(verbose) then
         say("in combat, macros sync when it ends")
     end
 end
@@ -289,7 +319,7 @@ function EspiUtils.HandleMouseoverCommand(msg)
     elseif cmd == "list" then
         list()
     elseif cmd == "sync" then
-        requestSync()
+        requestSync(true)
     else
         help()
     end
@@ -300,7 +330,7 @@ EspiUtils.Mouseover = {
     Add = function(cmd, text) return spells and add(cmd, text) or false end, -- true if the list changed
     SetKind = function(spell, kind) if spells then setKind(spell, kind) end end,
     Remove = function(text) if spells then remove(text) end end,
-    Sync = function() if spells then requestSync() end end,
+    Sync = function() if spells then requestSync(true) end end,
     GetList = function() return spells end,
     GetSpellbook = function() return getBook() end,
     Has = function(name) return spells and (find(name)) ~= nil end,

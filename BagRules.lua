@@ -522,7 +522,7 @@ local function Done(stuck)
     end
     local locked = stuck > 0 and ("%d locked items not moved"):format(stuck)
     local result = locked and (message .. "; " .. locked) or message
-    if db.debug then
+    if db.debug or run.verbose then
         Say(result)
     else
         Log(result)
@@ -759,7 +759,9 @@ local function Supported()
     return false
 end
 
-local function Sort()
+-- verbose: print the result even with debug off (the sort command and the Sort now button;
+-- the Clean Up click stays quiet).
+local function Sort(verbose)
     if run then
         Say("already sorting")
         return
@@ -801,6 +803,7 @@ local function Sort()
         if section.setting then rules[section.setting] = db[section.setting] end
     end
     run = {
+        verbose = verbose,
         regions = regions, sets = BuildSets(), layout = SortLayout(), rules = rules,
         passes = 0, moves = 0, merges = 0,
         tried = {}, fillTried = {}, pending = {}, start = GetTime(),
@@ -912,9 +915,11 @@ local function DepositReagents()
 end
 
 -- Sorts once the deposits have landed (BAG_UPDATE_DELAYED), or after 2s if no event comes.
+-- depositWait is the fallback timer; it is cancelled so a stale one can't end a later deposit early.
 local depositWait
 local function FinishDeposit()
     if not depositWait then return end
+    depositWait:Cancel()
     depositWait = nil
     frame:UnregisterEvent("BAG_UPDATE_DELAYED")
     Sort()
@@ -922,9 +927,8 @@ end
 
 local function SortAfterDeposit()
     if depositWait then return end
-    depositWait = true
     frame:RegisterEvent("BAG_UPDATE_DELAYED")
-    C_Timer.After(2, FinishDeposit)
+    depositWait = C_Timer.NewTimer(2, FinishDeposit)
 end
 
 -- Button hook ---------------------------------------------------------------
@@ -991,7 +995,7 @@ EspiUtils.Bags = {
     Sections = SECTIONS,
     Sides = SIDES,
     MoveSection = MoveSection,
-    Sort = Sort,
+    Sort = function() Sort(true) end,
     Preview = Preview,
     ResetDefaults = function()
         EspiUtils.ApplyDefaults(db, defaults, true)
@@ -1031,7 +1035,7 @@ local TOGGLES = {
 function EspiUtils.HandleBagsCommand(msg)
     local cmd = strtrim(msg or ""):lower():match("^(%S*)")
     if cmd == "sort" then
-        Sort()
+        Sort(true)
     elseif cmd == "stop" then
         if run then Stop("cancelled") else Print("not sorting") end
     elseif cmd == "preview" then
@@ -1050,10 +1054,10 @@ function EspiUtils.HandleBagsCommand(msg)
     elseif TOGGLES[cmd] then
         local key, text = TOGGLES[cmd][1], TOGGLES[cmd][2]
         db[key] = not db[key]
-        Print(text .. (db[key] and ": on" or ": off"))
+        Print(text .. ": " .. EspiUtils.OnOff(db[key]))
     elseif cmd == "debug" then
         db.debug = not db.debug
-        Print("debug " .. (db.debug and "on" or "off"))
+        Print("debug " .. EspiUtils.OnOff(db.debug))
     elseif cmd == "log" then
         local log = db.log
         if #log == 0 then Print("log is empty") end
@@ -1061,8 +1065,7 @@ function EspiUtils.HandleBagsCommand(msg)
     else
         if cmd ~= "" and cmd ~= "help" then Print(("unknown command '%s'"):format(cmd)) end
         Print(("override %s, quest->junk %s, debug %s"):format(
-            db.enabled and "on" or "off",
-            db.questToJunk and "on" or "off", db.debug and "on" or "off"))
+            EspiUtils.OnOff(db.enabled), EspiUtils.OnOff(db.questToJunk), EspiUtils.OnOff(db.debug)))
         for _, line in ipairs(HELP) do Print(line) end
     end
 end

@@ -1,14 +1,14 @@
--- Bewsh: a level-up notification. Everyone says "ding"; this says you bewshed.
+-- Boosh (code name Bewsh): a level-up notification. Everyone says "ding"; this says you booshed.
+-- Players only see "boosh"; identifiers, the banner key and the saved account.bewsh table keep the old name.
 
 local _, EspiUtils = ...
 
-local Print = EspiUtils.Printer("Bewsh", "ffd100")
+local Print = EspiUtils.Printer("Boosh", "ffd100")
 
 local DISPLAY_SECONDS = 6
 local DEFAULTS = { enabled = true, guild = false, party = false }
 local STORY = "Everyone says \"ding\" when they level, a habit from the EverQuest days. "
-    .. "Back in vanilla WoW, Espi joked that it's really more of a \"boosh\" noise, and it stuck. "
-    .. "Bewsh is that word, spelled the way it sounds."
+    .. "Back in vanilla WoW, Espi joked that it's really more of a \"boosh\" noise, and it stuck."
 
 local settings = {} -- EspiUtils.InitializeBewsh replaces it with the saved table
 local pendingChat = {}
@@ -19,14 +19,16 @@ local function Dismiss()
     EspiUtils.Banner.Dismiss("bewsh")
 end
 
-local function Show(level)
+-- preview: ignore the hide options (the Preview button and /espiutils boosh test).
+local function Show(level, preview)
     EspiUtils.Banner.Push({
         key = "bewsh",
-        title = "Bewsh!",
-        text = level and ("You bewshed! Level %d."):format(level) or "You bewshed!",
+        title = "Boosh!",
+        text = level and ("You booshed! Level %d."):format(level) or "You booshed!",
         icon = "Interface\\Icons\\Spell_Holy_SurgeOfLight",
         duration = DISPLAY_SECONDS,
-        tooltip = { "Why bewsh?", STORY },
+        tooltip = { "Why boosh?", STORY },
+        preview = preview,
     })
 end
 
@@ -91,7 +93,7 @@ local function FlushChat()
     ClearPendingChat()
     if #queued == 0 then return end
     if ChatLocked() then
-        Print("chat was locked, so deferred Bewsh messages weren't sent.")
+        Print("chat was locked, so deferred Boosh messages weren't sent.")
         return
     end
     -- Only post to channels still open now (e.g. skip a party you left mid-combat).
@@ -109,10 +111,8 @@ end
 events:SetScript("OnEvent", function(_, event, level)
     if event == "PLAYER_LEVEL_UP" then
         if not settings.enabled then return end
-        if not EspiUtils.IsCinematic() then
-            Show(level)
-        end
-        PostChat(("bewsh (%d)"):format(level or UnitLevel("player") + 1))
+        Show(level)
+        PostChat(("boosh (%d)"):format(level or UnitLevel("player") + 1))
     elseif event == "PLAYER_REGEN_ENABLED" then
         FlushChat()
     end
@@ -144,7 +144,7 @@ EspiUtils.Bewsh = {
     -- Shows the alert for a few seconds; false when in combat or dead.
     Preview = function()
         if not EspiUtils.CanPreviewReminder() then return false end
-        Show(UnitLevel("player"))
+        Show(UnitLevel("player"), true)
         return true
     end,
     ResetDefaults = function()
@@ -154,9 +154,7 @@ EspiUtils.Bewsh = {
     end,
 }
 
-local function OnOff(on)
-    return on and "on" or "off"
-end
+local OnOff = EspiUtils.OnOff
 
 -- Story targets: each returns the chat channel, or nil plus why it can't post there.
 local STORY_TARGETS = {
@@ -176,7 +174,7 @@ local function TellStory(target)
     end
     local resolve = STORY_TARGETS[target]
     if not resolve then
-        Print("use /espiutils bewsh " .. STORY_USAGE .. ".")
+        Print("use /espiutils boosh " .. STORY_USAGE .. ".")
         return
     end
     local channel, reason = resolve()
@@ -208,7 +206,7 @@ function EspiUtils.HandleBewshCommand(action, value)
         Print("level-up notification " .. OnOff(settings.enabled) .. ".")
     elseif action == "guild" or action == "party" then
         api.Set(action, not settings[action])
-        Print(("posting \"bewsh\" to %s %s."):format(action, OnOff(settings[action])))
+        Print(("posting \"boosh\" to %s %s."):format(action, OnOff(settings[action])))
     elseif action == "test" then
         if not api.Preview() then
             Print("preview available while alive and out of combat.")
@@ -219,6 +217,6 @@ function EspiUtils.HandleBewshCommand(action, value)
         Print(("level-up notification %s. Guild post %s, party post %s."):format(
             OnOff(settings.enabled), OnOff(settings.guild), OnOff(settings.party)))
     else
-        Print("use /espiutils bewsh " .. USAGE .. ".")
+        Print("use /espiutils boosh " .. USAGE .. ".")
     end
 end

@@ -25,7 +25,7 @@ local CLASS_BUFFS = {
     },
     DRUID = {
         { target = "group", ids = { 1126, 21849 } },               -- Mark of the Wild, Gift of the Wild
-        { target = "group", ids = { 467 } },                        -- Thorns
+        { target = "self", ids = { 467 } },                         -- Thorns (often cast on the tank instead)
     },
     WARRIOR = {
         { target = "self", ids = { 6673 } },                        -- Battle Shout
@@ -152,13 +152,14 @@ end
 
 -- Returns name, "missing" for a buff that has gone, or name, "expiring", remaining
 -- for the one with the least time left within lead. The last return is how long
--- until the next buff will come within lead, so no polling is needed. Nothing is
--- returned for name and state when all is well or the client won't say.
+-- until the next buff will come within lead, so no polling is needed. Then the entry,
+-- and the unit the buff is on (or missing from). Nothing is returned for name and
+-- state when all is well or the client won't say.
 local function GetRebuffState(lead)
     if C_Secrets and C_Secrets.ShouldAurasBeSecret and C_Secrets.ShouldAurasBeSecret() then return end
 
     local reachable
-    local bestName, bestRemaining, nextCheck, bestEntry
+    local bestName, bestRemaining, nextCheck, bestEntry, bestUnit
     for _, entry in ipairs(buffs) do
         local names = EntryNames(entry)
         -- An entry whose spells the player doesn't know has no names: nothing to scan.
@@ -180,24 +181,35 @@ local function GetRebuffState(lead)
                         local wait = remaining - lead
                         if not nextCheck or wait < nextCheck then nextCheck = wait end
                     elseif remaining > 0 and (not bestRemaining or remaining < bestRemaining) then
-                        bestName, bestRemaining, bestEntry = names[1], remaining, entry
+                        bestName, bestRemaining, bestEntry, bestUnit = names[1], remaining, entry, unit
                     end
                 elseif not entry.mine then
-                    return names[1], "missing", nil, nil, entry
+                    return names[1], "missing", nil, nil, entry, unit
                 end
             end
         end
     end
-    if bestName then return bestName, "expiring", bestRemaining, nextCheck, bestEntry end
+    if bestName then return bestName, "expiring", bestRemaining, nextCheck, bestEntry, bestUnit end
     return nil, nil, nil, nextCheck
 end
 
 -- Display ------------------------------------------------------------------------
 
+-- " on <name>" for a group member, "" for you or when the client hides the name.
+local function OnWhom(unit)
+    if not unit or UnitIsUnit(unit, "player") then return "" end
+    local name = UnitName(unit)
+    if not name or issecretvalue(name) then return "" end
+    return " on " .. name
+end
+
 -- entry: the buff being shown, whose spell icon replaces the default one.
-local function ShowReminder(message, entry)
+-- preview: ignore the hide options (the Preview button and /espiutils rebuff test).
+local function ShowReminder(message, entry, preview)
     local texture = entry and entry.iconId and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(entry.iconId)
-    EspiUtils.Banner.Push({ key = "rebuff", title = "Rebuff", text = message, icon = texture or DEFAULT_ICON })
+    EspiUtils.Banner.Push({
+        key = "rebuff", title = "Rebuff", text = message, icon = texture or DEFAULT_ICON, preview = preview,
+    })
 end
 
 local function HideReminder()
@@ -213,23 +225,25 @@ end
 
 local function UpdateReminder()
     CancelTimer()
-    if not buffs or not EspiUtils.CanShowReminder() then
+    if not buffs then
         HideReminder()
         return
     end
-    if not settings.enabled or (settings.hideResting and IsResting()) then
+    -- While the banner can't show it (combat, hide options), skip the group aura scan and
+    -- the countdown; the banner's visibility listener runs this again once it can.
+    if not settings.enabled or (settings.hideResting and IsResting()) or not EspiUtils.Banner.CanShow() then
         HideReminder()
         return
     end
 
-    local name, state, remaining, nextCheck, entry = GetRebuffState(settings.lead)
+    local name, state, remaining, nextCheck, entry, unit = GetRebuffState(settings.lead)
     local delay = nextCheck
     if state == "missing" then
-        ShowReminder(("%s missing"):format(name), entry)
+        ShowReminder(("%s missing%s"):format(name, OnWhom(unit)), entry)
     elseif state == "expiring" then
-        local seconds = math.ceil(remaining)
-        ShowReminder(("%s expires in %d:%02d"):format(name, math.floor(seconds / 60), seconds % 60), entry)
-        delay = remaining - seconds + 1 -- tick once a second for the countdown
+        local text
+        text, delay = EspiUtils.FormatCountdown(remaining) -- ticks once a second
+        ShowReminder(("%s%s expires in %s"):format(name, OnWhom(unit), text), entry)
     else
         HideReminder()
     end
@@ -251,7 +265,7 @@ local rebuffOptions = {
     preview = function()
         if not buffs then return false end
         CancelTimer()
-        ShowReminder("Preview")
+        ShowReminder("Preview", nil, true)
         timer = C_Timer.NewTimer(5, UpdateReminder)
     end,
 }
@@ -292,10 +306,15 @@ local function TrackSpells()
     end
 end
 
-local UPDATE_EVENTS = {
-    "PLAYER_ENTERING_WORLD", "PLAYER_UPDATE_RESTING", "PLAYER_REGEN_ENABLED",
-    "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST",
-}
+-- Entering the world, death, combat end and the other visibility changes arrive through
+-- the banner's listener. PLAYER_FLAGS_CHANGED (AFK) only affects timed alerts: no rescan for it.
+local UPDATE_EVENTS = { "PLAYER_UPDATE_RESTING", "PLAYER_REGEN_ENABLED" }
+
+EspiUtils.Banner.OnVisibilityChanged(function(event)
+    if buffs and event ~= "PLAYER_FLAGS_CHANGED" and (event == "PLAYER_ENTERING_WORLD" or IsPlayerInWorld()) then
+        UpdateReminder()
+    end
+end)
 
 -- store: the character settings table (EspiUtilsDB).
 function EspiUtils.InitializeRebuff(store)
@@ -322,15 +341,10 @@ function EspiUtils.InitializeRebuff(store)
     events:RegisterEvent("PLAYER_REGEN_DISABLED")
     events:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
     for _, event in ipairs(UPDATE_EVENTS) do events:RegisterEvent(event) end
-    for _, event in ipairs(EspiUtils.VISIBILITY_EVENTS) do
-        pcall(events.RegisterEvent, events, event)
-    end
     if IsPlayerInWorld() then UpdateReminder() end
 end
 
 events:SetScript("OnEvent", function(_, event, unit)
-    -- Event order between frames isn't guaranteed, so set the flag here too.
-    EspiUtils.TrackCinematic(event)
     if event == "UNIT_AURA" then
         -- Only the player and group members matter; the rest of the world is noise.
         if settings.enabled and groupSet[unit] then Schedule() end
@@ -347,14 +361,12 @@ events:SetScript("OnEvent", function(_, event, unit)
             Schedule()
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
-        -- Nothing shows in combat, so skip the aura events until it ends.
+        -- Nothing shows in combat (the banner hides it), so stop tracking until it ends.
         events:UnregisterEvent("UNIT_AURA")
-        -- InCombatLockdown() is still false during this event.
         CancelTimer()
-        HideReminder()
     elseif event == "PLAYER_REGEN_ENABLED" then
+        -- The banner's listener updates once its combat flag has cleared.
         events:RegisterEvent("UNIT_AURA")
-        UpdateReminder()
     elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
         HideReminder()
         C_Timer.After(0, UpdateReminder)

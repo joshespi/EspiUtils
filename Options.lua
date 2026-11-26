@@ -13,25 +13,43 @@ local ordered = {}
 
 -- Builders -------------------------------------------------------------------
 
+-- panel: a page, or the scrolling content of one (both share refreshers and FitHeight).
 local function RefreshPanel(panel)
     for _, refresh in ipairs(panel.refreshers) do refresh() end
+    panel.FitHeight()
 end
 
+-- Returns the frame to build on: the page's scroll child (content.outer is the page
+-- the Settings window shows). Scrolling lets tall pages fit the smaller classic options window.
 local function NewPage(key, title, parent)
-    local panel = CreateFrame("Frame")
-    panel.name = title
-    panel.refreshers = {}
+    local page = CreateFrame("Frame")
+    page.name = title
+    page.refreshers = {}
+    local scroll = CreateFrame("ScrollFrame", nil, page, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 0, -4)
+    scroll:SetPoint("BOTTOMRIGHT", -28, 4)
+    local panel = CreateFrame("Frame", nil, scroll)
+    panel:SetSize(PAGE_WIDTH + 32, 1)
+    scroll:SetScrollChild(panel)
+    panel.refreshers = page.refreshers
+    panel.outer = page
+    -- Builders move panel.y down as they add rows; panel.bottom is for lists
+    -- that grow after the page is built.
+    panel.FitHeight = function()
+        panel:SetHeight(math.max(1, 16 - math.min(panel.y, panel.bottom or 0)))
+    end
+    page.FitHeight = panel.FitHeight
     local heading = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     heading:SetPoint("TOPLEFT", 16, -16)
     heading:SetText(title)
     panel.y = -52
     -- The Settings window can show a page without firing OnShow the first time,
     -- so also use its own refresh hook.
-    panel:SetScript("OnShow", RefreshPanel)
-    panel.OnRefresh = RefreshPanel
-    pages[key] = panel
+    page:SetScript("OnShow", RefreshPanel)
+    page.OnRefresh = RefreshPanel
+    pages[key] = page
     if parent then
-        ordered[#ordered + 1] = panel
+        ordered[#ordered + 1] = page
     end
     return panel
 end
@@ -68,6 +86,7 @@ local function AddCheck(panel, label, tip, get, set)
     local text = check:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     text:SetPoint("LEFT", check, "RIGHT", 4, 0)
     text:SetText(label)
+    check.label = text
     -- make the label part of the click target
     check:SetHitRectInsets(0, -(text:GetStringWidth() + 8), 0, 0)
     check:SetScript("OnClick", function(self) set(self:GetChecked() and true or false) end)
@@ -77,9 +96,16 @@ local function AddCheck(panel, label, tip, get, set)
     return check
 end
 
--- A whole-number box. set returns false for a value out of range, which restores
--- the stored value.
-local function AddNumber(panel, label, tip, get, set)
+-- Greys out a check (and its label) whose setting only matters when another is on.
+local function SetCheckEnabled(check, on)
+    check:SetEnabled(on)
+    check.label:SetFontObject(on and "GameFontHighlight" or "GameFontDisable")
+end
+
+-- A whole-number box from min to max. set returns false for a value out of range,
+-- which prints the range and restores the stored value.
+local function AddNumber(panel, label, min, max, get, set)
+    local range = ("Whole number from %d to %d."):format(min, max)
     local text = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     text:SetPoint("TOPLEFT", 16, panel.y - 4)
     text:SetText(label)
@@ -92,14 +118,17 @@ local function AddNumber(panel, label, tip, get, set)
     local function refresh() box:SetText(tostring(get() or "")) end
     local function commit(self)
         local value = tonumber(self:GetText())
-        if value then set(value) end
+        -- Out of range: say why before the box snaps back.
+        if value and set(value) == false then
+            EspiUtils.Print(("%s: %s"):format(label, range))
+        end
         refresh()
     end
     -- ClearFocus fires OnEditFocusLost, which commits.
     box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     box:SetScript("OnEscapePressed", function(self) refresh() self:ClearFocus() end)
     box:SetScript("OnEditFocusLost", commit)
-    Tooltip(box, tip)
+    Tooltip(box, range)
     panel.refreshers[#panel.refreshers + 1] = refresh
     panel.y = panel.y - 30
     return box
@@ -143,7 +172,8 @@ local function AddDefaults(panel, reset)
         reset()
         RefreshPanel(panel)
     end
-    panel.OnDefault = run
+    -- The Settings window calls OnDefault on the page it shows, not on scroll content.
+    panel.outer.OnDefault = run
     AddButtons(panel, { { label = "Reset to defaults", width = 140, onClick = run } })
 end
 
@@ -157,7 +187,7 @@ local MOVE_BUTTON = {
     tip = "Show the alert banner to drag and resize (scroll over it). Right-click it to lock. The position is shared by all characters.",
     onClick = function()
         -- The Settings window would cover the reminders, so close it to drag.
-        if EspiUtils.ToggleTileMove() and SettingsPanel and SettingsPanel:IsShown() then
+        if EspiUtils.Banner.ToggleMove() and SettingsPanel and SettingsPanel:IsShown() then
             HideUIPanel(SettingsPanel)
         end
     end,
@@ -183,14 +213,14 @@ end
 local function BuildMain()
     local panel = NewPage("main", "Espi Utils")
     AddNote(panel, "Small quality-of-life tools. Pick a page on the left. Everything is also available from chat: /espiutils with no arguments lists the commands.")
-    AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Quest Tracker\n- Mouseover Macros\n- Bewsh (level-up notification)")
+    AddNote(panel, "Pages:\n- Food Reminder\n- Class Rebuff\n- Timed Reminders (posture, water, stand up)\n- Bag Rules (custom Clean Up)\n- Keep Bags Open\n- Quest Tracker\n- Mouseover Macros\n- Boosh (level-up notification)")
     AddHeader(panel, "All reminders")
     local general = EspiUtils.General
     for _, c in ipairs({
         { "sound", "Play a sound when a reminder appears", "Off by default." },
         { "hideMounted", "Hide while mounted", "Reminders return when you dismount." },
         { "hidePvP", "Hide in battlegrounds and arenas", nil },
-        { "timedHideInstances", "Hide posture and water reminders in instances", "Well Fed and rebuff reminders are not affected." },
+        { "timedHideInstances", "Hide posture, water and stand up reminders in instances", "Well Fed and rebuff reminders are not affected." },
     }) do
         local key = c[1]
         AddCheck(panel, c[2], c[3],
@@ -203,10 +233,10 @@ local function BuildMain()
             "Queue three sample alerts to see them appear one after another."),
         MOVE_BUTTON,
         { label = "Reset all", width = 110,
-          tip = "Default settings for these options and default positions and sizes for every reminder.",
+          tip = "Default settings for these options, and the default banner position and size.",
           onClick = function()
               general.Reset()
-              EspiUtils.Tiles.Reset()
+              EspiUtils.Banner.ResetPosition()
               EspiUtils.RefreshOptions()
           end },
     })
@@ -218,7 +248,7 @@ local function BuildMain()
     AddHeader(panel, "Support the addon")
     AddNote(panel, "Optional. Bitcoin (BTC) donation address:")
     AddCopyBox(panel, BTC_ADDRESS, 380)
-    return panel
+    return panel.outer
 end
 
 local function AddReminderActions(panel, api)
@@ -235,7 +265,7 @@ local function AddBuffControls(panel, api, enableLabel)
         function() return api.GetSettings().hideResting end,
         api.SetHideResting)
     AddNumber(panel, "Expiry warning (seconds, 0 = missing only)",
-        ("Whole number from 0 to %d."):format(api.MAX_LEAD),
+        0, api.MAX_LEAD,
         function() return api.GetSettings().lead end,
         api.SetLead)
     AddReminderActions(panel, api)
@@ -268,7 +298,7 @@ local function BuildTimed()
             function() local s = EspiUtils.GetTimedReminder(command) return s and s.enabled end,
             function(on) EspiUtils.SetTimedReminderEnabled(command, on) end)
         AddNumber(panel, "Interval (minutes)",
-            ("Whole number from 1 to %d."):format(EspiUtils.TimedReminderMaxMinutes),
+            1, EspiUtils.TimedReminderMaxMinutes,
             function() local s = EspiUtils.GetTimedReminder(command) return s and s.minutes end,
             function(v) return EspiUtils.SetTimedReminderMinutes(command, v) end)
         AddButtons(panel, {
@@ -472,56 +502,78 @@ local function BuildKeep()
     AddCheck(panel, "Keep bags open", "Turning it on keeps whatever bags are open right now.",
         function() return keep.GetSettings().enabled end,
         keep.SetEnabled)
-    AddCheck(panel, "Include reagent bag", "Off leaves the reagent bag alone: it is not reopened and not saved as kept.",
-        function() return keep.GetSettings().reagent end,
-        keep.SetReagent)
+    if keep.HasReagentBag then
+        AddCheck(panel, "Include reagent bag", "Off leaves the reagent bag alone: it is not reopened and not saved as kept.",
+            function() return keep.GetSettings().reagent end,
+            keep.SetReagent)
+    end
+    AddNote(panel, "Actions the game blocked are recorded. Include the list in bug reports.")
+    AddButtons(panel, {
+        { label = "Show blocked actions", width = 160, tip = "Prints the recorded list in chat.", onClick = keep.PrintBlocked },
+        { label = "Clear list", width = 100, onClick = keep.ClearBlocked },
+    })
     AddDefaults(panel, function()
         keep.SetReagent(true)
-        keep.SetEnabled(true)
+        keep.SetEnabled(true, true)
     end)
 end
 
 local function BuildQuests()
     local panel = NewPage("quests", "Quest Tracker", true)
-    AddNote(panel, "Sorts the quest tracker by quest level, lowest first. Off leaves the tracker in the game's order.")
+    AddNote(panel, "Sorts the quest tracker by quest level, lowest at the top unless you tick \"Highest level at the top\". Off leaves the tracker in the game's order.")
     local qs = EspiUtils.QuestSort
     AddCheck(panel, "Sort tracked quests by level", nil,
         function() return qs.GetSettings().enabled end,
         qs.SetEnabled)
+    AddCheck(panel, "Highest level at the top", "Unticked, the lowest level quest is at the top.",
+        function() return qs.GetSettings().order == "desc" end,
+        function(on) qs.SetOrder(on and "desc" or "asc") end)
     AddNote(panel, "Untrack every tracked quest that is yellow, orange or red for your level, keeping only green and grey ones.")
     AddButtons(panel, {
         { label = "Untrack non-green quests", width = 180, onClick = qs.KeepEasy,
           tip = "Quests you haven't tracked are not added." },
     })
-    AddDefaults(panel, function() qs.SetEnabled(false) end)
+    AddDefaults(panel, function()
+        qs.SetEnabled(false)
+        qs.SetOrder("asc")
+    end)
 end
 
 local function BuildBewsh()
-    local panel = NewPage("bewsh", "Bewsh (Level Up)", true)
+    local panel = NewPage("bewsh", "Boosh (Level Up)", true)
     local bewsh = EspiUtils.Bewsh
-    AddNote(panel, "Shows \"You bewshed!\" when you level up. Hover over it for the story.")
-    AddNote(panel, "|cffffd100Why bewsh?|r " .. bewsh.Story)
+    AddNote(panel, "Shows \"You booshed!\" when you level up. Hover over it for the story.")
+    AddNote(panel, "|cffffd100Why boosh?|r " .. bewsh.Story)
     for _, c in ipairs({
-        { "enabled", "Enable Bewsh on level up", "Turns on the alert and any chat posts you select below." },
-        { "guild", "On level up: post \"bewsh\" to guild (needs Enable)", "Sends \"bewsh (<level>)\" to guild chat instead of you typing ding." },
-        { "party", "On level up: post \"bewsh\" to group chat (needs Enable)", "Sends \"bewsh (<level>)\" to your party or raid, or to instance chat if you only have a matchmaking group. If chat is locked, it is sent after combat." },
+        { "enabled", "Enable Boosh on level up", "Turns on the alert and any chat posts you select below." },
+        { "guild", "On level up: post \"boosh\" to guild", "Sends \"boosh (<level>)\" to guild chat instead of you typing ding." },
+        { "party", "On level up: post \"boosh\" to group chat", "Sends \"boosh (<level>)\" to your party or raid, or to instance chat if you only have a matchmaking group. If chat is locked, it is sent after combat." },
     }) do
         local key = c[1]
-        AddCheck(panel, c[2], c[3],
+        local check = AddCheck(panel, c[2], c[3],
             function() return bewsh.GetSettings()[key] end,
-            function(on) bewsh.Set(key, on) end)
+            function(on)
+                bewsh.Set(key, on)
+                if key == "enabled" then RefreshPanel(panel) end
+            end)
+        -- Chat posts only happen with the alert enabled.
+        if key ~= "enabled" then
+            panel.refreshers[#panel.refreshers + 1] = function()
+                SetCheckEnabled(check, bewsh.GetSettings().enabled)
+            end
+        end
     end
     AddReminderActions(panel, bewsh)
     AddHeader(panel, "Tell the story now")
     AddButtons(panel, {
         { label = "Story to say", width = 110,
-          tip = "Posts the Why bewsh story to say chat as one message.",
+          tip = "Posts the Why boosh story to say chat as one message.",
           onClick = function() bewsh.TellStory("say") end },
         { label = "Story to party", width = 110,
-          tip = "Posts the Why bewsh story to your party, raid or instance chat, one sentence per message.",
+          tip = "Posts the Why boosh story to your party, raid or instance chat, one sentence per message.",
           onClick = function() bewsh.TellStory("party") end },
         { label = "Story to guild", width = 110,
-          tip = "Posts the Why bewsh story to guild chat, one sentence per message.",
+          tip = "Posts the Why boosh story to guild chat, one sentence per message.",
           onClick = function() bewsh.TellStory("guild") end },
     })
 end
@@ -587,6 +639,10 @@ local function BuildMouseover()
 
         local ROW = 26
         local prow = {}
+        local none = content:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+        none:SetPoint("TOPLEFT", 4, -6)
+        none:SetWidth(310)
+        none:SetJustifyH("LEFT")
         local function makePickRow(i)
             local row = CreateFrame("Frame", nil, content)
             row:SetSize(320, ROW)
@@ -636,11 +692,15 @@ local function BuildMouseover()
                 end
             end
             for i = n + 1, #prow do prow[i]:Hide() end
+            none:SetShown(n == 0)
+            none:SetText(q == "" and "No castable spells found. The spellbook can't be read on this client." or "No spells match.")
             content:SetHeight(math.max(1, n * ROW))
         end
         search:SetScript("OnTextChanged", function() picker.refresh() end)
         picker.refresh()
     end
+    -- The picker belongs to this page: close it along with the Settings window.
+    panel:HookScript("OnHide", function() if picker then picker:Hide() end end)
 
     local addFriendly = act("add")
     box:SetScript("OnEnterPressed", addFriendly)
@@ -701,12 +761,15 @@ local function BuildMouseover()
             local row = rows[i] or makeRow(i)
             row.entry = e
             row.label:SetText(e.name)
-            row.kind:SetText(mo.LABEL[e.kind] or "?")
+            local kind = (mo.LABEL[e.kind] or "?"):gsub("^%l", string.upper) -- "Friendly", like the picker
+            row.kind:SetText(kind)
             row:Show()
         end
         for i = #spells + 1, #rows do
             rows[i]:Hide()
         end
+        panel.bottom = listTop - math.max(1, #spells) * ROW_HEIGHT
+        panel.FitHeight()
     end
     panel.refreshers[#panel.refreshers + 1] = refreshList
 end

@@ -1,5 +1,7 @@
 # Banner consolidation refactors
 
+**Status: done in 1.10.0.** All three sections below were carried out together. `Banner.lua` now owns the frame, the position (`EspiUtilsAccountDB.banner`, migrated from `account.tiles.banner`), move mode, the sound, and the visibility gate, with its own events. `Reminder.lua` keeps only the shared settings and helpers. A timed alert interrupted by combat is paused and resumes afterwards, instead of being dropped. This file is kept as a record of the reasoning.
+
 Follow-ups from the 1.7.0 review. Version 1.7.0 replaced the per-reminder tiles with one queued alert banner (`Banner.lua`). The code still sits on the old multi-tile setup. Each section below can be done as its own change, in the order given.
 
 ## 1. Fold the Tiles system into Banner

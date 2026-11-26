@@ -1,5 +1,31 @@
 ﻿# Changelog
 
+## 1.10.0
+
+- Bewsh is now Boosh everywhere you see it: the alert, chat posts (`boosh (<level>)`), the options page and the help. `/espiutils boosh` is the command; `/espiutils bewsh` still works, and your settings carry over.
+- Quest Tracker can sort with the highest level at the top: tick "Highest level at the top" or use `/espiutils quests order [low | high]`. `status` shows the direction.
+- Thorns is only checked on you, so druids no longer get "Thorns missing" for every group member without it.
+- Mouseover macro sync removes `MO` macros for spells taken off the list on another character of the same class. Only macros in the exact format the addon writes are removed. `/espiutils mouseover sync` and the Sync button say "macros up to date" when nothing changed.
+- Fixed a bank reagent deposit that could start sorting before a second deposit landed.
+- Fixed "Untrack non-green quests" reading the wrong difficulty on clients that track quests by log index.
+- The food reminder and Keep Bags Open no longer depend on retail-only bag and item enums.
+- A rebuff alert for a group member names them: "Arcane Intellect missing on Bob".
+- `/espiutils bags sort` and the "Sort now" button print the result ("sorted: …" or "already sorted"). Clean Up stays quiet.
+- Typing an out-of-range number on an options page prints the allowed range instead of just snapping back.
+- Quest sort says when it pauses because the game keeps undoing the order, and `status` shows it.
+- Timed reminder messages use short names ("Water reminders enabled." instead of "Drink water reminders enabled.").
+- Every options page scrolls, so long spell lists and smaller options windows no longer cut anything off.
+- Boosh's "On level up: post…" checkboxes are greyed out while Boosh is off.
+- Keep Bags Open page has "Show blocked actions" and "Clear list" buttons. Its Defaults no longer prints to chat, and "Include reagent bag" is hidden on clients without a reagent bag.
+- The spell picker closes with the Settings window, says why when it has nothing to list, and spell rows use the same "Friendly"/"Hostile" wording as the picker.
+- A posture, water or stand up reminder that was on screen when combat started comes back for the rest of its time when combat ends, instead of being dropped.
+- The test buttons for the food, rebuff, timed and Boosh alerts show even while mounted, AFK or in an instance with those alerts hidden (still not in combat or while dead).
+- A Boosh alert that fires during a cinematic waits for it to end (up to a minute) instead of being skipped.
+- "Reset position" prints the same "Banner position and size reset." from every button and command.
+- Internal: the food and rebuff reminders stop scanning auras and bags while the banner can't show them (combat, mounted with "Hide while mounted", and so on), and catch up as soon as it can.
+- Internal: the banner now decides on its own whether any alert may show, the food reminder moved into its own file, and the banner position has its own saved table (your current position is kept). The food check remembers which items give Well Fed instead of re-reading tooltips after every loot.
+- Texts that said "posture and water" now include stand up. The quests help line lists `keepeasy` and `order`, and the README lists `test` for food and rebuff.
+
 ## 1.9.0
 
 - Posture, water and stand up reminders no longer come due at the same moment: if two would fire together, the later one is moved to at least 2 minutes after the other. This also spaces out reminders that are overdue at login or that piled up during combat.

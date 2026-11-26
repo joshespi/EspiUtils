@@ -27,7 +27,7 @@ end
 
 local MAX_BAG = NUM_TOTAL_BAG_FRAMES or NUM_BAG_FRAMES
 
-local REAGENT_ID = Enum.BagIndex.ReagentBag
+local REAGENT_ID = Enum.BagIndex and Enum.BagIndex.ReagentBag -- nil on clients without a reagent bag
 
 -- Same order as OpenAllBags so frames land where Blizzard puts them.
 -- Callers only read the list, so both variants are built once and reused
@@ -329,7 +329,8 @@ local function PrintStatus()
     end
 end
 
-local function SetEnabled(on)
+-- quiet: no chat output (the options page's Defaults).
+local function SetEnabled(on, quiet)
     db.enabled = on and true or false
     -- Whatever is open when you turn it on is what it keeps open. If nothing
     -- is (Escape closed them on the way to Settings), keep the saved set.
@@ -339,13 +340,13 @@ local function SetEnabled(on)
         if open and #open > 0 then
             db.want = open
         elseif #db.want == 0 then
-            Print("on. No bags are open; open the ones you want kept.")
+            if not quiet then Print("on. No bags are open; open the ones you want kept.") end
             return
         end
         -- Reopen the saved set now (or once bags are allowed), not on the next bag update.
         Reconcile()
     end
-    PrintStatus()
+    if not quiet then PrintStatus() end
 end
 
 local function SetReagent(on)
@@ -365,6 +366,12 @@ EspiUtils.Keep = {
     GetSettings = function() return db end,
     SetEnabled = SetEnabled,
     SetReagent = SetReagent,
+    HasReagentBag = REAGENT_ID ~= nil,
+    PrintBlocked = PrintBlocked,
+    ClearBlocked = function()
+        wipe(db.blocked)
+        Print("blocked actions cleared.")
+    end,
 }
 
 -- Everything but this setup is registered after db exists, so nothing else
@@ -407,8 +414,7 @@ function EspiUtils.HandleKeepBagsCommand(msg)
     elseif msg == "blocked" then
         PrintBlocked()
     elseif msg == "blocked clear" then
-        wipe(db.blocked)
-        Print("blocked actions cleared.")
+        EspiUtils.Keep.ClearBlocked()
     elseif msg == "config" or msg == "options" then
         EspiUtils.OpenOptions("keep")
     else
