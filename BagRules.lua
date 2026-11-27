@@ -418,7 +418,7 @@ local function DisplayOrder(slots)
     if not UsingCombinedBags() then
         return slots, nil, "combined bags off"
     end
-    if CombinedBagsClosed() then -- only Preview gets here: Sort refuses first
+    if CombinedBagsClosed() then -- only if WithBagsShown couldn't open them
         return slots, nil, "bags closed"
     end
     local cf = ContainerFrameCombinedBags
@@ -809,6 +809,7 @@ local function Sort(verbose)
         return
     end
     -- the fallback order would fight the next sort made with the bags open
+    -- (WithBagsShown opens them for the button and command, so this is only a guard)
     if CombinedBagsClosed() then
         Say("open your bags first")
         return
@@ -883,6 +884,28 @@ local function Preview()
         end
     end
 end
+
+-- The order is read from the combined bag buttons, so they must be on screen: opens closed
+-- combined bags and runs fn next frame, once the buttons are laid out. For the Sort now and
+-- Preview buttons and commands, which are used with the bags closed. A second call while one
+-- waits is dropped.
+local waitingForBags = false
+local function WithBagsShown(fn)
+    if waitingForBags then return end
+    if not CombinedBagsClosed() then
+        fn()
+        return
+    end
+    waitingForBags = true
+    OpenAllBags()
+    C_Timer.After(0, function()
+        waitingForBags = false
+        fn()
+    end)
+end
+
+local function SortNow() WithBagsShown(function() Sort(true) end) end
+local function PreviewNow() WithBagsShown(Preview) end
 
 -- Probe ---------------------------------------------------------------------
 
@@ -1037,8 +1060,8 @@ EspiUtils.Bags = {
     Sections = SECTIONS,
     Sides = SIDES,
     MoveSection = MoveSection,
-    Sort = function() Sort(true) end,
-    Preview = Preview,
+    Sort = SortNow,
+    Preview = PreviewNow,
     ResetDefaults = function()
         EspiUtils.ApplyDefaults(db, defaults, true)
         db.order = DefaultOrder(true)
@@ -1072,11 +1095,11 @@ local HELP = {
 function EspiUtils.HandleBagsCommand(msg)
     local cmd = strtrim(msg or ""):lower():match("^(%S*)")
     if cmd == "sort" then
-        Sort(true)
+        SortNow()
     elseif cmd == "stop" then
         if run then Stop("cancelled") else Print("not sorting") end
     elseif cmd == "preview" then
-        Preview()
+        PreviewNow()
     elseif cmd == "probe" then
         Probe()
     elseif cmd == "on" or cmd == "off" then

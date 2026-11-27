@@ -15,6 +15,7 @@ local deferred = false  -- wanted a sort during combat
 local passes = 0        -- consecutive sorts that changed the order
 local MAX_PASSES = 3    -- past this, sorting pauses until toggled or the order settles
 local paused = false    -- the game wouldn't keep the order
+local FALLBACK_KEEP = 5 -- KeepEasy with nothing green or grey keeps this many lowest-level quests
 
 local CQ = C_QuestLog
 
@@ -53,12 +54,17 @@ local function Remove(key)
     return RemoveQuestWatch(key)
 end
 
+-- the level the quest's colour comes from: the scaled difficulty level where the client has it
+local function EffectiveLevel(q)
+    if q.isQuestID and CQ.GetQuestDifficultyLevel then
+        return CQ.GetQuestDifficultyLevel(q.key) or q.level
+    end
+    return q.level
+end
+
 -- Green and grey quests are 3 or more levels below the player (yellow starts at -2).
 local function IsEasy(q)
-    local level = q.level
-    if q.isQuestID and CQ.GetQuestDifficultyLevel then
-        level = CQ.GetQuestDifficultyLevel(q.key) or level
-    end
+    local level = EffectiveLevel(q)
     return level > 0 and level - UnitLevel("player") <= -3
 end
 
@@ -82,34 +88,50 @@ local function WatchCount()
     return GetNumQuestWatches and GetNumQuestWatches() or 0
 end
 
+-- Only the level flips with the requested order; ties stay in title order.
+local function ComesBefore(a, b, order)
+    if a.level ~= b.level then
+        if order == "desc" then return a.level > b.level end
+        return a.level < b.level
+    end
+    if a.title ~= b.title then return a.title < b.title end
+    return tostring(a.key) < tostring(b.key)
+end
+
 local function KeepEasy()
     if TrackerLocked() then return end
     local removed, kept = 0, 0
+    local fallback = false
     local ok, err = Quietly(function()
+        local candidates = {}
         for _, q in ipairs(ReadWatches()) do
             if IsEasy(q) then
                 kept = kept + 1
             else
-                Remove(q.key)
-                removed = removed + 1
+                candidates[#candidates + 1] = q
             end
         end
+        fallback = kept == 0 and #candidates > 0
+        local keep = 0 -- candidates kept, from the front of the list
+        if fallback then
+            -- rank by the same level IsEasy judged; these records are this call's own copies
+            for _, q in ipairs(candidates) do q.level = EffectiveLevel(q) end
+            table.sort(candidates, function(a, b) return ComesBefore(a, b, "asc") end)
+            keep = math.min(FALLBACK_KEEP, #candidates)
+            kept = keep
+        end
+        for i = keep + 1, #candidates do Remove(candidates[i].key) end
+        removed = #candidates - keep
     end)
     if not ok then
         Print("couldn't update the tracker: " .. tostring(err))
         return
     end
-    Print(("untracked %d quest(s), kept %d green or grey."):format(removed, kept))
-end
-
--- Only the level flips with db.order; same-level quests stay in title order either way.
-local function Less(a, b)
-    if a.level ~= b.level then
-        if db.order == "desc" then return a.level > b.level end
-        return a.level < b.level
+    if fallback then
+        Print(("no green or grey quests tracked. Kept the %d lowest-level quest(s)."):format(kept))
+    else
+        Print(("untracked %d quest(s), kept %d green or grey."):format(removed, kept))
     end
-    if a.title ~= b.title then return a.title < b.title end
-    return tostring(a.key) < tostring(b.key)
 end
 
 local function ClearPause()
@@ -121,7 +143,7 @@ local function Unsorted()
     local list = ReadWatches()
     if #list < 2 then return end
     local sorted = { unpack(list) }
-    table.sort(sorted, Less)
+    table.sort(sorted, function(a, b) return ComesBefore(a, b, db.order) end)
     for i, q in ipairs(list) do
         if q ~= sorted[i] then return list, sorted end
     end
@@ -243,7 +265,7 @@ local function AttachTrackerButton()
     EspiUtils.SetTooltip(button, function()
         return "Quest tracker",
             "Left-click to sort by level (" .. ORDER_TEXT[db.order] .. ").",
-            "Right-click to untrack all but green and grey quests."
+            "Right-click to keep green and grey quests, or the five lowest-level tracked quests if none qualify."
     end, "ANCHOR_LEFT")
     trackerButton = button
     return true

@@ -517,7 +517,7 @@ local function BuildQuests()
     AddCheck(panel, "Highest level at the top", "Unticked, the lowest level quest is at the top.",
         function() return qs.GetSettings().order == "desc" end,
         function(on) qs.SetOrder(on and "desc" or "asc") end)
-    AddNote(panel, "Sort now sorts once, even with sorting off. Untrack non-green untracks every tracked quest that is yellow, orange or red for your level, keeping only green and grey ones. Both are also on the tracker's Sort button.")
+    AddNote(panel, "Sort now sorts once, even with sorting off. Untrack non-green keeps green and grey tracked quests. If none qualify, it keeps the five lowest-level tracked quests. Both actions are also on the tracker's Sort button.")
     AddButtons(panel, {
         { label = "Sort now", width = 100, onClick = qs.SortOnce },
         { label = "Untrack non-green quests", width = 180, onClick = qs.KeepEasy,

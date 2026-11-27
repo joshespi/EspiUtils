@@ -56,7 +56,7 @@ Bags only close when you close them. When the game closes your bags (vendor, mai
 
 Sorts the quest tracker by quest level (off by default), with the lowest level at the top or, with "Highest level at the top", the highest. Tick it on the Quest Tracker page or use `/espiutils quests [on | off | status | sort | order [low | high]]` (no argument toggles sorting; `order` with no argument flips the direction). It reorders your tracked quests, so turning it off leaves the current order in place.
 
-Left-click **Sort** on the tracker header (or `/espiutils quests sort`) to sort once in your chosen direction, even with automatic sorting off. Right-click **Sort** to untrack yellow, orange and red quests, keeping the green and grey ones. This is the same action as "Untrack non-green quests" in the options or `/espiutils quests keepeasy`.
+Left-click **Sort** on the tracker header (or `/espiutils quests sort`) to sort once in your chosen direction, even with automatic sorting off. Right-click **Sort** to keep green and grey tracked quests. If none qualify, it keeps up to five of your lowest-level tracked quests regardless of sort direction. This is the same action as "Untrack non-green quests" in the options or `/espiutils quests keepeasy`.
 
 ### Mouseover Macros
 

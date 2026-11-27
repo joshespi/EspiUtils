@@ -1,5 +1,10 @@
 ﻿# Changelog
 
+## 1.12.1
+
+- Bag Rules "Sort now", "Preview" and `/espiutils bags sort | preview` open your combined bags if they're closed, instead of stopping with "open your bags first".
+- "Untrack non-green quests" (tracker right-click, `/espiutils quests keepeasy`) keeps your five lowest-level tracked quests when none are green or grey, instead of untracking them all. It ranks them by the same scaled level that sets their colour.
+
 ## 1.12.0
 
 - The quest tracker has a **Sort** button on its header. Left-click sorts once in your chosen direction, even with automatic sorting off. Right-click untracks yellow, orange and red quests. Both are also available as `/espiutils quests sort`, `/espiutils quests keepeasy`, and the Sort now and Untrack non-green quests buttons on the Quest Tracker page. A manual sort says whether it sorted or was already in order.
