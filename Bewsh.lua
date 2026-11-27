@@ -19,17 +19,19 @@ local function Dismiss()
     EspiUtils.Banner.Dismiss("bewsh")
 end
 
--- preview: ignore the hide options (the Preview button and /espiutils boosh test).
+-- preview: ignore the hide options (the Preview button and /espiutils boosh test); returns
+-- false when the preview is blocked.
 local function Show(level, preview)
-    EspiUtils.Banner.Push({
+    local alert = {
         key = "bewsh",
         title = "Boosh!",
         text = level and ("You booshed! Level %d."):format(level) or "You booshed!",
         icon = "Interface\\Icons\\Spell_Holy_SurgeOfLight",
         duration = DISPLAY_SECONDS,
         tooltip = { "Why boosh?", STORY },
-        preview = preview,
-    })
+    }
+    if preview then return EspiUtils.Banner.Preview(alert) end
+    EspiUtils.Banner.Push(alert)
 end
 
 -- Chat ------------------------------------------------------------------------
@@ -139,9 +141,7 @@ EspiUtils.Bewsh = {
     end,
     -- Shows the alert for a few seconds; false when in combat or dead.
     Preview = function()
-        if not EspiUtils.CanPreviewReminder() then return false end
-        Show(UnitLevel("player"), true)
-        return true
+        return Show(UnitLevel("player"), true)
     end,
     ResetDefaults = function()
         EspiUtils.ApplyDefaults(settings, DEFAULTS, true)

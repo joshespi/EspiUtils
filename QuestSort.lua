@@ -7,6 +7,7 @@ local _, EspiUtils = ...
 local Print = EspiUtils.Printer("Quest sort", "33ccff")
 
 local DEFAULTS = { enabled = false, order = "asc" }
+local ORDER_TEXT = { asc = "lowest level at the top", desc = "highest level at the top" }
 local db                -- EspiUtilsDB.questSort
 local scheduled = false
 local sorting = false   -- our own re-adds fire the watch events; ignore them
@@ -61,14 +62,30 @@ local function IsEasy(q)
     return level > 0 and level - UnitLevel("player") <= -3
 end
 
-local function KeepEasy()
-    if InCombatLockdown() then
-        Print("can't change the tracker in combat.")
-        return
-    end
-    local removed, kept = 0, 0
+-- Prints and returns true while the tracker can't be changed.
+local function TrackerLocked()
+    if not InCombatLockdown() then return false end
+    Print("can't change the tracker in combat.")
+    return true
+end
+
+-- Runs fn with our own watch events ignored; returns pcall's results.
+local function Quietly(fn)
     sorting = true
-    local ok, err = pcall(function()
+    local ok, err = pcall(fn)
+    sorting = false
+    return ok, err
+end
+
+local function WatchCount()
+    if CQ and CQ.GetNumQuestWatches then return CQ.GetNumQuestWatches() end
+    return GetNumQuestWatches and GetNumQuestWatches() or 0
+end
+
+local function KeepEasy()
+    if TrackerLocked() then return end
+    local removed, kept = 0, 0
+    local ok, err = Quietly(function()
         for _, q in ipairs(ReadWatches()) do
             if IsEasy(q) then
                 kept = kept + 1
@@ -78,7 +95,6 @@ local function KeepEasy()
             end
         end
     end)
-    sorting = false
     if not ok then
         Print("couldn't update the tracker: " .. tostring(err))
         return
@@ -96,23 +112,58 @@ local function Less(a, b)
     return tostring(a.key) < tostring(b.key)
 end
 
-local function SortNow()
-    scheduled = false
-    if not db.enabled or sorting then return end
-    if InCombatLockdown() then
-        deferred = true
-        return
-    end
+local function ClearPause()
+    passes, paused = 0, false
+end
+
+-- The watches and their sorted copy, or nil when they are already in order.
+local function Unsorted()
     local list = ReadWatches()
     if #list < 2 then return end
     local sorted = { unpack(list) }
     table.sort(sorted, Less)
-    local same = true
     for i, q in ipairs(list) do
-        if q ~= sorted[i] then same = false break end
+        if q ~= sorted[i] then return list, sorted end
     end
-    if same then
-        passes, paused = 0, false
+end
+
+-- Re-adds the watches in sorted order. If the game drops any (e.g. a watch cap), puts
+-- the original order back and pauses automatic sorting. Returns whether the sort held.
+local function Apply(list, sorted)
+    local before = WatchCount()
+    local ok, err = Quietly(function()
+        for _, q in ipairs(list) do Remove(q.key) end
+        for _, q in ipairs(sorted) do Add(q.key) end
+    end)
+    if not ok then
+        Print("couldn't reorder the tracker: " .. tostring(err))
+    end
+    if WatchCount() < before then
+        Quietly(function()
+            for _, q in ipairs(list) do Add(q.key) end
+        end)
+        if db.enabled then
+            paused = true
+            Print("the game wouldn't keep the sorted order; sorting paused until you toggle it.")
+        else
+            Print("the game wouldn't keep the sorted order; the old order is back.")
+        end
+        return false
+    end
+    return ok
+end
+
+-- Automatic sort, after quest events while sorting is on.
+local function AutoSort()
+    scheduled = false
+    if sorting or not db.enabled then return end
+    if InCombatLockdown() then
+        deferred = true
+        return
+    end
+    local list, sorted = Unsorted()
+    if not list then
+        ClearPause()
         return
     end
     if paused then return end
@@ -124,36 +175,31 @@ local function SortNow()
         Print("the game keeps changing the tracker order back; sorting paused until you toggle it.")
         return
     end
+    Apply(list, sorted)
+end
 
-    sorting = true
-    local ok, err = pcall(function()
-        for _, q in ipairs(list) do Remove(q.key) end
-        for _, q in ipairs(sorted) do Add(q.key) end
-    end)
-    sorting = false
-    if not ok then
-        Print("couldn't reorder the tracker: " .. tostring(err))
-    end
-    -- Put back anything the re-add lost (e.g. a watch cap), in the original order.
-    if #ReadWatches() < #list then
-        sorting = true
-        for _, q in ipairs(list) do Add(q.key) end
-        sorting = false
-        paused = true
-        Print("the game wouldn't keep the sorted order; sorting paused until you toggle it.")
+-- One sort in the chosen direction, even with sorting off. Also clears a pause.
+local function SortOnce()
+    if sorting or TrackerLocked() then return end
+    ClearPause()
+    local list, sorted = Unsorted()
+    if not list then
+        Print("already in order.")
+    elseif Apply(list, sorted) then
+        Print("sorted, " .. ORDER_TEXT[db.order] .. ".")
     end
 end
 
 local function Schedule()
     if scheduled or sorting or not db.enabled then return end
     scheduled = true
-    C_Timer.After(0, SortNow)
+    C_Timer.After(0, AutoSort)
 end
 
 -- Clears the pause so the next sort tries again.
 local function Resume()
-    passes, paused = 0, false
-    if db.enabled then Schedule() end
+    ClearPause()
+    Schedule()
 end
 
 local function SetEnabled(on)
@@ -161,8 +207,6 @@ local function SetEnabled(on)
     Resume()
     Print(db.enabled and "on: tracked quests sort by level." or "off: the tracker keeps its current order.")
 end
-
-local ORDER_TEXT = { asc = "lowest level at the top", desc = "highest level at the top" }
 
 -- order: "asc" (lowest level at the top) or "desc" (highest level at the top).
 local function SetOrder(order)
@@ -176,6 +220,39 @@ local function Status()
     Print(("%s, %s.%s"):format(EspiUtils.OnOff(db.enabled), ORDER_TEXT[db.order],
         paused and " Paused: the game wouldn't keep the order; toggle sorting to try again." or ""))
 end
+
+-- A Sort button on the tracker header: left-click sorts once, right-click runs KeepEasy.
+-- Returns true once the button exists. The tracker may load after us, and frames are
+-- not touched in combat.
+local trackerButton
+local function AttachTrackerButton()
+    if trackerButton then return true end
+    if InCombatLockdown() then return false end
+    local tracker = _G.ObjectiveTrackerFrame or _G.WatchFrame or _G.QuestWatchFrame
+    if not tracker then return false end
+    local parent = tracker.Header or _G.WatchFrameHeader or tracker
+    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    button:SetSize(44, 20)
+    button:SetFrameLevel(parent:GetFrameLevel() + 5)
+    button:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -32, -2)
+    button:SetText("Sort")
+    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    button:SetScript("OnClick", function(_, mouseButton)
+        if mouseButton == "RightButton" then KeepEasy() else SortOnce() end
+    end)
+    EspiUtils.SetTooltip(button, function()
+        return "Quest tracker",
+            "Left-click to sort by level (" .. ORDER_TEXT[db.order] .. ").",
+            "Right-click to untrack all but green and grey quests."
+    end, "ANCHOR_LEFT")
+    trackerButton = button
+    return true
+end
+
+local attacher = CreateFrame("Frame")
+attacher:SetScript("OnEvent", function(self)
+    if AttachTrackerButton() then self:UnregisterAllEvents() end
+end)
 
 local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event)
@@ -193,6 +270,10 @@ function EspiUtils.InitializeQuestSort(settings)
     db = EspiUtils.SubTable(settings, "questSort")
     EspiUtils.ApplyDefaults(db, DEFAULTS)
     if not ORDER_TEXT[db.order] then db.order = DEFAULTS.order end
+    if not AttachTrackerButton() then
+        attacher:RegisterEvent("ADDON_LOADED")
+        attacher:RegisterEvent("PLAYER_REGEN_ENABLED")
+    end
     for _, event in ipairs({ "QUEST_ACCEPTED", "QUEST_WATCH_LIST_CHANGED", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED" }) do
         pcall(events.RegisterEvent, events, event)
     end
@@ -204,6 +285,7 @@ EspiUtils.QuestSort = {
     SetEnabled = SetEnabled,
     SetOrder = SetOrder,
     KeepEasy = KeepEasy,
+    SortOnce = SortOnce,
     ResetDefaults = function()
         EspiUtils.ApplyDefaults(db, DEFAULTS, true)
         Resume()
@@ -227,11 +309,13 @@ function EspiUtils.HandleQuestSortCommand(action, value)
         SetOrder(db.order == "desc" and "asc" or "desc")
     elseif action == "order" and ORDER_WORDS[value] then
         SetOrder(ORDER_WORDS[value])
+    elseif action == "sort" then
+        SortOnce()
     elseif action == "keepeasy" then
         KeepEasy()
     elseif action == "config" or action == "options" then
         EspiUtils.OpenOptions("quests")
     else
-        Print("/espiutils quests [on | off | status | keepeasy | order [low | high]] (no argument toggles sorting; low/high: which level goes at the top)")
+        Print("/espiutils quests [on | off | status | sort | keepeasy | order [low | high]] (no argument toggles sorting; sort: once, even when off; low/high: which level goes at the top)")
     end
 end

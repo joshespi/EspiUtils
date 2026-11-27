@@ -5,6 +5,7 @@ local LOCK_TIMEOUT = 3     -- seconds to wait for item locks to clear
 local MAX_PASSES = 60
 local ROW_TOL = 2          -- px; button tops are floats
 local LOG_MAX = 200        -- lines kept in EspiUtilsAccountDB.bags.log
+local LOG_SLACK = 50       -- the log may grow this far past LOG_MAX before it is trimmed
 local LOG_SHOW = 15        -- lines "/espiutils bags log" prints
 
 local defaults = {
@@ -31,7 +32,13 @@ local Print = EspiUtils.Printer("Bags", "66ccff")
 local function Log(msg)
     local log = db.log
     log[#log + 1] = date("%m-%d %H:%M:%S ") .. msg
-    while #log > LOG_MAX do table.remove(log, 1) end
+    -- Trim in batches: one shift per LOG_SLACK lines instead of one per line.
+    local n = #log
+    if n > LOG_MAX + LOG_SLACK then
+        local drop = n - LOG_MAX
+        for i = 1, LOG_MAX do log[i] = log[i + drop] end
+        for i = n, LOG_MAX + 1, -1 do log[i] = nil end
+    end
 end
 
 local function Say(msg)
@@ -406,13 +413,13 @@ end
 
 -- Reading order of the combined backpack, from the real buttons, and a description of
 -- where it came from. Slots the buttons don't cover keep their fallback order at the end.
--- A third value says why the slot order was used instead (nil when the screen was read).
+-- When the screen can't be read: the slot order, nil, and why.
 local function DisplayOrder(slots)
     if not UsingCombinedBags() then
-        return slots, "fallback: combined bags off", "combined bags off"
+        return slots, nil, "combined bags off"
     end
     if CombinedBagsClosed() then -- only Preview gets here: Sort refuses first
-        return slots, "fallback: bags closed", "bags closed"
+        return slots, nil, "bags closed"
     end
     local cf = ContainerFrameCombinedBags
 
@@ -479,7 +486,7 @@ local function BuildRegions()
     end
     if #general > 0 then
         local slots, order, fallback = DisplayOrder(general)
-        local region = NewRegion(slots, true, ("general %d slots (%s)"):format(#slots, order))
+        local region = NewRegion(slots, true, ("general %d slots (%s)"):format(#slots, order or "fallback: " .. fallback))
         region.fallback = fallback
         table.insert(regions, 1, region)
     end
@@ -578,7 +585,8 @@ local function PickPair(region, g)
     for a = 1, #g - 1 do
         for b = #g, a + 1, -1 do
             local dst, src = region.slots[g[a]], region.slots[g[b]]
-            local id = src.bag .. ":" .. src.slot .. ">" .. dst.bag .. ":" .. dst.slot
+            -- bag * 1000 + slot fits well inside 100000, so each pair gets its own number.
+            local id = (src.bag * 1000 + src.slot) * 100000 + dst.bag * 1000 + dst.slot
             if not run.tried[id] then
                 run.tried[id] = true
                 return g[b], g[a]
@@ -621,14 +629,31 @@ local function MergeRegion(region, recs)
     return moves
 end
 
--- an unused, unlocked slot holding key that isn't already where it belongs
-local function FindSource(region, recs, des, used, key)
+-- Per key, the unlocked slots holding it that aren't already where they belong, in slot order.
+local function Sources(region, recs, des)
+    local byKey = {}
     for j = 1, region.n do
         local src, target = recs[j], des[j]
-        if not used[j] and src and not src.locked and src.key == key
-            and not (target and target.key == key) then
-            return j
+        if src and src.key ~= nil and not src.locked and not (target and target.key == src.key) then
+            local list = byKey[src.key]
+            if not list then
+                list = { next = 1 }
+                byKey[src.key] = list
+            end
+            list[#list + 1] = j
         end
+    end
+    return byKey
+end
+
+-- the first unused slot from Sources holding key
+local function TakeSource(sources, used, key)
+    local list = sources[key]
+    if not list then return end
+    while list.next <= #list do
+        local j = list[list.next]
+        list.next = list.next + 1
+        if not used[j] then return j end
     end
 end
 
@@ -636,6 +661,7 @@ end
 -- Returns the moves issued, an error, and the locked items that are out of place.
 local function OrderRegion(region, recs)
     local des = BuildDesired(region, recs, run.layout)
+    local sources = Sources(region, recs, des)
     local used, moves, stuck = {}, 0, 0
     for i = 1, region.n do
         local want, have = des[i], recs[i]
@@ -643,7 +669,7 @@ local function OrderRegion(region, recs)
             stuck = stuck + 1
         end
         if want and not used[i] and not (have and have.key == want.key) then
-            local j = not (have and have.locked) and FindSource(region, recs, des, used, want.key)
+            local j = not (have and have.locked) and TakeSource(sources, used, want.key)
             if j then
                 local ok, err = Move(region.slots[j], region.slots[i])
                 if not ok then return moves, err end

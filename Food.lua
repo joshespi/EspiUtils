@@ -29,32 +29,28 @@ local function WellFedName()
     return wellFedName
 end
 
--- Returns true/false, or nil plus a fallback guess when it can't tell yet.
+-- true/false, or nil while the item's tooltip hasn't loaded. Without the tooltip API any
+-- food counts. Only called once WellFedName() is known (GetFoodState checks it).
 local function GrantsWellFed(bag, slot)
-    local name = WellFedName()
-    if not (C_TooltipInfo and C_TooltipInfo.GetBagItem and name) then
-        return nil, true -- cannot tell; fall back to any food
-    end
-    local needle = name:lower()
-    -- nil: the tooltip hasn't loaded yet, so no guess
+    if not (C_TooltipInfo and C_TooltipInfo.GetBagItem) then return true end
+    local needle = WellFedName():lower()
     return EspiUtils.BagTooltipMatches(bag, slot, function(text)
         return text:lower():find(needle, 1, true) ~= nil
-    end), false
+    end)
 end
 
 -- Whether the food in a bag slot can give Well Fed, and whether that answer is certain.
 local function SlotGrants(bag, slot, itemID)
     local grants = grantsByItem[itemID]
     if grants ~= nil then return grants, true end
-    local guess
-    grants, guess = GrantsWellFed(bag, slot)
-    if grants == nil then return guess, false end
+    grants = GrantsWellFed(bag, slot)
+    if grants == nil then return false, false end
     grantsByItem[itemID] = grants
     return grants, true
 end
 
 -- The first slot holding food that can give Well Fed (bag, slot, itemID), then whether
--- the scan was certain (false when an unloaded tooltip was guessed).
+-- the scan was certain (false when an unloaded tooltip was skipped).
 local function FindFood()
     local certain = true
     for bag = 0, LAST_BAG do
@@ -87,9 +83,11 @@ local function HasFoodItem()
 end
 
 -- A loot or vendor action only needs a rescan if the food found last time moved or went.
+-- Returns whether it did (the cached answer was dropped).
 local function BagsChanged()
-    if hasFood and C_Container.GetContainerItemID(foodBag, foodSlot) == foodItem then return end
+    if hasFood and C_Container.GetContainerItemID(foodBag, foodSlot) == foodItem then return false end
     hasFood = nil
+    return true
 end
 
 -- Return no state when the client cannot tell us whether Well Fed is active.
@@ -135,12 +133,11 @@ local supported = false
 local timer
 local auraPending = false
 local events = CreateFrame("Frame")
-local inCombat = false -- PLAYER_REGEN_DISABLED fires before InCombatLockdown() is true
 local auraTracked = false
 
 -- UNIT_AURA only matters while the reminder is on and out of combat (the banner hides it then).
 local function TrackAuras()
-    local want = settings.enabled and not inCombat
+    local want = settings.enabled and not EspiUtils.Banner.InCombat()
     if want == auraTracked then return end
     auraTracked = want
     if want then
@@ -150,12 +147,12 @@ local function TrackAuras()
     end
 end
 
--- preview: ignore the hide options (the Preview button and /espiutils food test).
+-- preview: ignore the hide options (the Preview button and /espiutils food test); returns
+-- false when the preview is blocked.
 local function ShowReminder(message, preview)
-    EspiUtils.Banner.Push({
-        key = "food", title = "Well Fed", text = message, icon = "Interface\\Icons\\INV_Misc_Fork&Knife",
-        preview = preview,
-    })
+    local alert = { key = "food", title = "Well Fed", text = message, icon = "Interface\\Icons\\INV_Misc_Fork&Knife" }
+    if preview then return EspiUtils.Banner.Preview(alert) end
+    EspiUtils.Banner.Push(alert)
 end
 
 local function HideReminder()
@@ -209,9 +206,10 @@ local foodOptions = {
     settings = function() return settings end,
     update = UpdateReminder,
     preview = function()
+        if not ShowReminder("Preview", true) then return false end
         CancelTimer()
-        ShowReminder("Preview", true)
         timer = C_Timer.NewTimer(5, UpdateReminder)
+        return true
     end,
 }
 EspiUtils.Food = EspiUtils.NewBuffReminderAPI(foodOptions)
@@ -239,8 +237,7 @@ events:SetScript("OnEvent", function(self, event, arg1)
             UpdateReminder()
         end
     elseif event == "BAG_UPDATE_DELAYED" then
-        BagsChanged()
-        if IsPlayerInWorld() then UpdateReminder() end
+        if BagsChanged() and IsPlayerInWorld() then UpdateReminder() end
     elseif event == "UNIT_AURA" then
         -- Aura events arrive in bursts; update once after they settle.
         if not auraPending then
@@ -255,15 +252,9 @@ end)
 -- Rescan only when the banner's answer changed (combat, death, mounting with "Hide while
 -- mounted", ...) or on entering the world; the reminder's own events and timer cover the rest.
 local couldShow
-EspiUtils.Banner.OnVisibilityChanged(function(event)
+EspiUtils.Banner.OnVisibilityChanged(function(event, canShow)
     if not supported then return end
-    if event == "PLAYER_REGEN_DISABLED" then
-        inCombat = true
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        inCombat = false
-    end
     TrackAuras()
-    local canShow = EspiUtils.Banner.CanShow()
     if event == "PLAYER_ENTERING_WORLD" or (canShow ~= couldShow and IsPlayerInWorld()) then
         couldShow = canShow
         UpdateReminder()
@@ -286,7 +277,6 @@ function EspiUtils.InitializeFood(store)
 
     supported = C_Spell and C_Spell.GetSpellName and C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName and true or false
     if not supported then return end
-    inCombat = InCombatLockdown()
     TrackAuras()
     -- PLAYER_ENTERING_WORLD and the other visibility events arrive through the banner's listener.
     for _, event in ipairs({ "PLAYER_UPDATE_RESTING", "ADDON_RESTRICTION_STATE_CHANGED",

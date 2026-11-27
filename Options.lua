@@ -83,12 +83,7 @@ local function AddHeader(panel, text)
 end
 
 local function Tooltip(widget, text)
-    if not text then return end
-    widget:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(text, nil, nil, nil, nil, true)
-    end)
-    widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    if text then EspiUtils.SetTooltip(widget, text) end
 end
 
 local function AddCheck(panel, label, tip, get, set)
@@ -105,6 +100,11 @@ local function AddCheck(panel, label, tip, get, set)
     panel.refreshers[#panel.refreshers + 1] = function() check:SetChecked(get()) end
     panel.y = panel.y - 28
     return check
+end
+
+-- A check for the boolean api.GetSettings()[key]; set(on) stores it.
+local function AddSettingCheck(panel, label, tip, api, key, set)
+    return AddCheck(panel, label, tip, function() return api.GetSettings()[key] end, set)
 end
 
 -- One check per spec { key, label, tip } for a boolean in settings(); set(key, on) stores it.
@@ -265,12 +265,9 @@ end
 
 -- Shared page body for the Food and Rebuff reminders.
 local function AddBuffControls(panel, api, enableLabel)
-    AddCheck(panel, enableLabel, nil,
-        function() return api.GetSettings().enabled end,
-        api.SetEnabled)
-    AddCheck(panel, "Hide in rested areas", "Hide the reminder in cities and inns.",
-        function() return api.GetSettings().hideResting end,
-        api.SetHideResting)
+    AddSettingCheck(panel, enableLabel, nil, api, "enabled", api.SetEnabled)
+    AddSettingCheck(panel, "Hide in rested areas", "Hide the reminder in cities and inns.",
+        api, "hideResting", api.SetHideResting)
     AddNumber(panel, "Expiry warning (seconds, 0 = missing only)",
         0, api.MAX_LEAD,
         function() return api.GetSettings().lead end,
@@ -279,13 +276,13 @@ local function AddBuffControls(panel, api, enableLabel)
 end
 
 local function BuildFood()
-    local panel = NewPage("food", "Food Reminder", true)
+    local panel = NewPage("food", "Food Reminder")
     AddNote(panel, "Shows a reminder when the Well Fed buff is missing or about to run out.")
     AddBuffControls(panel, EspiUtils.Food, "Enable food reminder")
 end
 
 local function BuildRebuff()
-    local panel = NewPage("rebuff", "Class Rebuff", true)
+    local panel = NewPage("rebuff", "Class Rebuff")
     AddNote(panel, "Reminds you to recast your class buffs (Fortitude, Arcane Intellect, Mark of the Wild, Battle Shout, armors) when they are missing or about to run out. Paladins are warned when a blessing they cast is running low.")
     local rebuff = EspiUtils.Rebuff
     if not rebuff.HasBuffs() then
@@ -296,7 +293,7 @@ local function BuildRebuff()
 end
 
 local function BuildTimed()
-    local panel = NewPage("timed", "Timed Reminders", true)
+    local panel = NewPage("timed", "Timed Reminders")
     AddNote(panel, "Periodic reminders that appear for a few seconds. They wait until you are alive and out of combat.")
     for _, definition in ipairs(EspiUtils.GetTimedReminders()) do
         local command = definition.command
@@ -476,7 +473,7 @@ local function AddBagOrder(panel, bags)
 end
 
 local function BuildBags()
-    local panel = NewPage("bags", "Bag Rules", true)
+    local panel = NewPage("bags", "Bag Rules")
     if not EspiUtils.ready.bags then return ModuleOff(panel, "bags") end
     AddNote(panel, "Drag groups to set their order. Top starts at the first slot and Bottom ends at the last. Shift-click Clean Up for Blizzard's sort.")
     local bags = EspiUtils.Bags
@@ -494,17 +491,15 @@ local function BuildBags()
 end
 
 local function BuildKeep()
-    local panel = NewPage("keep", "Keep Bags Open", true)
+    local panel = NewPage("keep", "Keep Bags Open")
     AddNote(panel, "Reopens bags when the game closes them. Bags you close yourself stay closed.")
     if not EspiUtils.ready.keep then return ModuleOff(panel, "keep") end
     local keep = EspiUtils.Keep
-    AddCheck(panel, "Keep bags open", "Turning it on keeps whatever bags are open right now.",
-        function() return keep.GetSettings().enabled end,
-        keep.SetEnabled)
+    AddSettingCheck(panel, "Keep bags open", "Turning it on keeps whatever bags are open right now.",
+        keep, "enabled", keep.SetEnabled)
     if keep.HasReagentBag then
-        AddCheck(panel, "Include reagent bag", "Off leaves the reagent bag alone: it is not reopened and not saved as kept.",
-            function() return keep.GetSettings().reagent end,
-            keep.SetReagent)
+        AddSettingCheck(panel, "Include reagent bag", "Off leaves the reagent bag alone: it is not reopened and not saved as kept.",
+            keep, "reagent", keep.SetReagent)
     end
     AddNote(panel, "Actions the game blocked are recorded. Include the list in bug reports.")
     AddButtons(panel, {
@@ -515,17 +510,16 @@ local function BuildKeep()
 end
 
 local function BuildQuests()
-    local panel = NewPage("quests", "Quest Tracker", true)
+    local panel = NewPage("quests", "Quest Tracker")
     AddNote(panel, "Sorts the quest tracker by quest level, lowest at the top unless you tick \"Highest level at the top\". Off leaves the tracker in the game's order.")
     local qs = EspiUtils.QuestSort
-    AddCheck(panel, "Sort tracked quests by level", nil,
-        function() return qs.GetSettings().enabled end,
-        qs.SetEnabled)
+    AddSettingCheck(panel, "Sort tracked quests by level", nil, qs, "enabled", qs.SetEnabled)
     AddCheck(panel, "Highest level at the top", "Unticked, the lowest level quest is at the top.",
         function() return qs.GetSettings().order == "desc" end,
         function(on) qs.SetOrder(on and "desc" or "asc") end)
-    AddNote(panel, "Untrack every tracked quest that is yellow, orange or red for your level, keeping only green and grey ones.")
+    AddNote(panel, "Sort now sorts once, even with sorting off. Untrack non-green untracks every tracked quest that is yellow, orange or red for your level, keeping only green and grey ones. Both are also on the tracker's Sort button.")
     AddButtons(panel, {
+        { label = "Sort now", width = 100, onClick = qs.SortOnce },
         { label = "Untrack non-green quests", width = 180, onClick = qs.KeepEasy,
           tip = "Quests you haven't tracked are not added." },
     })
@@ -533,7 +527,7 @@ local function BuildQuests()
 end
 
 local function BuildBewsh()
-    local panel = NewPage("bewsh", "Boosh (Level Up)", true)
+    local panel = NewPage("bewsh", "Boosh (Level Up)")
     local bewsh = EspiUtils.Bewsh
     AddNote(panel, "Shows \"You booshed!\" when you level up. Hover over it for the story.")
     AddNote(panel, "|cffffd100Why boosh?|r " .. bewsh.Story)
@@ -570,7 +564,7 @@ local function BuildBewsh()
 end
 
 local function BuildMouseover()
-    local panel = NewPage("mouseover", "Mouseover Macros", true)
+    local panel = NewPage("mouseover", "Mouseover Macros")
     AddNote(panel, "Keeps a mouseover cast macro (named \"MO <spell>\") for each spell in this class's list. The list is shared by your characters of the same class; macros are per character. Changes made in combat apply when it ends.")
     if not EspiUtils.ready.mouseover then return ModuleOff(panel, "mouseover") end
     local mo = EspiUtils.Mouseover
@@ -599,7 +593,7 @@ local function BuildMouseover()
             if picker:IsShown() then picker.refresh() end
             return
         end
-        picker = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
+        picker = CreateFrame("Frame", "EspiUtilsSpellPicker", UIParent, "BasicFrameTemplateWithInset")
         picker:SetSize(380, 440)
         picker:SetPoint("CENTER")
         picker:SetFrameStrata("DIALOG")
@@ -610,7 +604,6 @@ local function BuildMouseover()
         picker:SetScript("OnDragStop", picker.StopMovingOrSizing)
         picker.TitleText:SetText("Pick spells")
         table.insert(UISpecialFrames, "EspiUtilsSpellPicker")
-        _G.EspiUtilsSpellPicker = picker
 
         local search = NewEditBox(picker, 330, 18, -34)
 
@@ -662,8 +655,6 @@ local function BuildMouseover()
 
         picker.refresh = function()
             local q = strtrim(search:GetText()):lower()
-            local listed = {}
-            for _, e in ipairs(mo.GetList()) do listed[e.name:lower()] = true end
             local n = 0
             for _, e in ipairs(mo.GetSpellbook()) do
                 if q == "" or e.lower:find(q, 1, true) then
@@ -672,7 +663,7 @@ local function BuildMouseover()
                     row.spell = e.name
                     row.icon:SetTexture(e.icon)
                     row.label:SetText(e.name)
-                    local shade = listed[e.lower] and 0.5 or 1 -- dim spells already in the list
+                    local shade = mo.Has(e.name) and 0.5 or 1 -- dim spells already in the list
                     row.label:SetTextColor(shade, shade, shade)
                     row:Show()
                 end
@@ -804,7 +795,7 @@ end
 
 -- key: "main", "food", "rebuff", "timed", "bags", "keep", "quests", "mouseover" or "bewsh"
 function EspiUtils.OpenOptions(key)
-    local panel = pages[key or "main"] or pages.main
+    local panel = pages[key] or pages.main
     if not panel then return end
     if InCombatLockdown() then
         EspiUtils.Print("Settings can't be opened in combat.")

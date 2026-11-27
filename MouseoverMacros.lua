@@ -161,16 +161,19 @@ local function getBook()
     return book
 end
 
+-- Edit distance. The two rows are reused between calls (only indexes 0..#b are read).
+local rowA, rowB = {}, {}
 local function distance(a, b)
-    local prev = {}
+    local prev, cur = rowA, rowB
     for j = 0, #b do prev[j] = j end
     for i = 1, #a do
-        local cur = { [0] = i }
+        cur[0] = i
+        local ai = a:byte(i)
         for j = 1, #b do
-            local cost = a:byte(i) == b:byte(j) and 0 or 1
+            local cost = ai == b:byte(j) and 0 or 1
             cur[j] = math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
         end
-        prev = cur
+        prev, cur = cur, prev
     end
     return prev[#b]
 end
@@ -196,8 +199,11 @@ local function resolveSpell(text)
     if hit or amb then return hit, amb end
     local best, bestD, tie
     local maxD = math.min(2, math.floor(#lower / 4)) -- short names get little or no fuzz
+    -- At 0 only an exact match would do, and that was checked above.
+    if maxD == 0 then return end
     for _, e in ipairs(entries) do
-        local d = distance(lower, e.lower)
+        -- The distance is at least the length difference.
+        local d = math.abs(#e.lower - #lower) <= maxD and distance(lower, e.lower) or maxD + 1
         if d <= maxD then
             if not bestD or d < bestD then
                 best, bestD, tie = e.name, d, false
@@ -264,26 +270,22 @@ local function setKind(spell, kind)
     end
 end
 
+-- The sync's prune deletes the removed spells' macros (only ones this addon wrote), and
+-- waits for combat to end.
 local function remove(list)
-    if InCombatLockdown() then
-        say("can't delete macros in combat")
-        return
-    end
+    local changed = false
     for piece in list:gmatch("[^,]+") do
         local spell = parseSpell(piece) -- nil for a blank piece ("a,,b")
         local i = spell and find(spell)
         if i then
             local e = table.remove(spells, i)
-            local idx = macroIndex(macroName(e.name))
-            if idx and idx > 0 then
-                DeleteMacro(idx)
-            end
             say("removed " .. e.name)
+            changed = true
         elseif spell then
             say("not in list: " .. spell)
         end
     end
-    sync() -- restores any macro shared with a removed entry (lists saved before the clash check)
+    if changed then requestSync() end
 end
 
 local function list()
@@ -330,6 +332,8 @@ EspiUtils.Mouseover = {
     Remove = remove,
     Sync = function() requestSync(true) end,
     GetList = function() return spells end,
+    -- Whether spell is in the list (case-insensitive, like every list lookup).
+    Has = function(spell) return find(spell) ~= nil end,
     GetSpellbook = getBook,
     LABEL = LABEL,
 }

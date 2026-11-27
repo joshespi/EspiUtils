@@ -40,7 +40,7 @@ end
 -- Shared pieces of the Food and Rebuff reminders ------------------------------------
 -- o.key: the banner key (not read yet); o.command: the slash command word; o.label: "Food";
 -- o.defaults: saved defaults; o.maxLead; o.settings(): the saved table (nil before load);
--- o.update(): re-evaluate the alert; o.preview(): show a 5 second preview;
+-- o.update(): re-evaluate the alert; o.preview(): show a 5 second preview, false when blocked;
 -- o.previewNote: optional text added to the "preview available" message.
 -- Returns the settings API used by the slash command and the options screen.
 function EspiUtils.NewBuffReminderAPI(o)
@@ -65,8 +65,7 @@ function EspiUtils.NewBuffReminderAPI(o)
     end
     -- Shows the reminder for a few seconds; false when in combat or dead.
     function api.Preview()
-        if not EspiUtils.CanPreviewReminder() then return false end
-        return o.preview() ~= false
+        return o.preview()
     end
     function api.ResetDefaults()
         EspiUtils.ApplyDefaults(o.settings(), o.defaults, true)
@@ -126,6 +125,40 @@ function EspiUtils.Printer(label, color)
     return function(message)
         EspiUtils.Print(tag .. message)
     end
+end
+
+local WHITE = { 1, 1, 1 }
+
+-- Tooltip on owner: title, then any further lines, all wrapped. No title: none.
+-- A line is a string (white) or { text, r, g, b }.
+function EspiUtils.ShowTooltip(owner, anchor, title, ...)
+    if not title then return end
+    GameTooltip:SetOwner(owner, anchor or "ANCHOR_RIGHT")
+    GameTooltip:SetText(title, nil, nil, nil, nil, true)
+    for i = 1, select("#", ...) do
+        local line = select(i, ...)
+        local text, color = line, WHITE
+        if type(line) == "table" then text, color = line[1], { line[2], line[3], line[4] } end
+        GameTooltip:AddLine(text, color[1], color[2], color[3], true)
+    end
+    GameTooltip:Show()
+end
+
+local function HideTooltip()
+    GameTooltip:Hide()
+end
+
+-- Shows a tooltip while the mouse is over widget. content: a string, or a function run on
+-- each hover that returns the title and further lines (nothing: no tooltip).
+function EspiUtils.SetTooltip(widget, content, anchor)
+    widget:SetScript("OnEnter", function(self)
+        if type(content) == "function" then
+            EspiUtils.ShowTooltip(self, anchor, content())
+        else
+            EspiUtils.ShowTooltip(self, anchor, content)
+        end
+    end)
+    widget:SetScript("OnLeave", HideTooltip)
 end
 
 function EspiUtils.OnOff(on)

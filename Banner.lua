@@ -98,6 +98,11 @@ function Banner.CanShow(timed)
     return normal
 end
 
+-- Previews ignore the hide options but still wait until alive, out of combat and no cinematic.
+local function CanPreview()
+    return not combat and EspiUtils.CanPreviewReminder()
+end
+
 -- Whether alert may show, given this Pick's answers for each kind. Previews ignore the
 -- hide options but still wait for a calm moment.
 local function Allowed(alert, normal, timed, preview)
@@ -162,7 +167,7 @@ local function Pick()
     if #queue == 0 then return end
     -- Checked once per Pick, not once per entry.
     local normal, timed = Visibility()
-    local preview = not combat and EspiUtils.CanPreviewReminder()
+    local preview = CanPreview()
     if current and current.alert.duration and Allowed(current.alert, normal, timed, preview) then return current end
     for _, e in ipairs(queue) do
         if e.alert.duration and Allowed(e.alert, normal, timed, preview) then return e end
@@ -238,21 +243,39 @@ function Banner.Push(alert)
     RequestRender()
 end
 
+-- Pushes alert as a preview (ignores the hide options). False, and nothing queued, when
+-- previews are blocked (combat, death). Sets alert.preview, so pass a table of your own.
+function Banner.Preview(alert)
+    if not CanPreview() then return false end
+    alert.preview = true
+    Banner.Push(alert)
+    return true
+end
+
+-- Like Push, the banner redraws on the next frame, so a dismiss and push in one tick
+-- (a reminder replacing its own alert) renders once.
 function Banner.Dismiss(key)
     local entry = Find(key)
     if entry then
         Remove(entry)
-        Render()
+        RequestRender()
     end
 end
 
--- fn(event) runs after every visibility event or Refresh, before the banner re-renders.
+-- True from PLAYER_REGEN_DISABLED on, which fires before InCombatLockdown() is true.
+function Banner.InCombat()
+    return combat
+end
+
+-- fn(event, normal, timed) runs after every visibility event or Refresh, before the banner
+-- re-renders. normal and timed are Banner.CanShow() and Banner.CanShow(true) at that moment.
 function Banner.OnVisibilityChanged(fn)
     listeners[#listeners + 1] = fn
 end
 
 local function Notify(event)
-    for _, fn in ipairs(listeners) do fn(event) end
+    local normal, timed = Visibility()
+    for _, fn in ipairs(listeners) do fn(event, normal, timed) end
 end
 
 -- Re-evaluate after something that may allow or block alerts changed (a setting, ...).
@@ -263,11 +286,11 @@ end
 
 -- Queues three sample alerts so the order and look can be checked. False when blocked.
 function Banner.Test()
-    if not EspiUtils.CanPreviewReminder() then return false end
+    if not CanPreview() then return false end
     for i = 1, 3 do
-        Banner.Push({
+        Banner.Preview({
             key = "test" .. i, title = "Test alert " .. i, text = ("Alert %d of 3, shown in order."):format(i),
-            icon = IDLE_ICON, duration = 3, preview = true,
+            icon = IDLE_ICON, duration = 3,
         })
     end
     return true
@@ -370,15 +393,10 @@ frame:SetScript("OnMouseUp", function(_, button)
     Remove(entry)
     Render()
 end)
-frame:SetScript("OnEnter", function(self)
+EspiUtils.SetTooltip(frame, function()
     local tip = not unlocked and current and current.alert.tooltip
-    if not tip then return end
-    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-    GameTooltip:SetText(tip[1])
-    GameTooltip:AddLine(tip[2], 1, 1, 1, true)
-    GameTooltip:Show()
-end)
-frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    if tip then return tip[1], tip[2] end
+end, "ANCHOR_BOTTOM")
 
 -- Setup ---------------------------------------------------------------------------
 
@@ -395,6 +413,8 @@ events:SetScript("OnEvent", function(_, event)
         cinematic = false
     elseif event == "CINEMATIC_START" or event == "PLAY_MOVIE" then
         cinematic = true
+    elseif event == "PLAYER_MOUNT_DISPLAY_CHANGED" and not EspiUtils.General.GetSettings().hideMounted then
+        return -- mounting only matters with "Hide while mounted"
     end
     Notify(event)
     -- Hide at once as combat starts; everything else can wait a frame.
@@ -415,6 +435,7 @@ function Banner.Init(account)
     if not ValidScale(layout.scale) then layout.scale = nil end
     Place()
 
+    combat = InCombatLockdown() -- after a /reload in combat
     for _, event in ipairs(VISIBILITY_EVENTS) do
         pcall(events.RegisterEvent, events, event)
     end

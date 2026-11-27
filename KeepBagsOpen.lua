@@ -30,28 +30,17 @@ local MAX_BAG = NUM_TOTAL_BAG_FRAMES or NUM_BAG_FRAMES
 
 local REAGENT_ID = Enum.BagIndex and Enum.BagIndex.ReagentBag -- nil on clients without a reagent bag
 
--- Same order as OpenAllBags so frames land where Blizzard puts them.
--- Callers only read the list, so both variants are built once and reused
--- (this runs on every bag update).
-local baseIDs, keyringIDs
+-- Same order as OpenAllBags so frames land where Blizzard puts them. Rebuilt per call:
+-- it is a handful of IDs, cheap next to the IsBagOpen calls made for each.
 local function TrackedIDs()
-    if not baseIDs then
-        baseIDs = {}
-        for id = BACKPACK_CONTAINER, MAX_BAG do
-            if id ~= REAGENT_ID or db.reagent then
-                baseIDs[#baseIDs + 1] = id
-            end
+    local ids = {}
+    for id = BACKPACK_CONTAINER, MAX_BAG do
+        if id ~= REAGENT_ID or db.reagent then
+            ids[#ids + 1] = id
         end
     end
-    local key = KeyringID()
-    if not key then
-        return baseIDs
-    end
-    if not keyringIDs then
-        keyringIDs = { unpack(baseIDs) }
-        keyringIDs[#keyringIDs + 1] = key
-    end
-    return keyringIDs
+    ids[#ids + 1] = KeyringID() -- nil (no-op) on clients without a keyring
+    return ids
 end
 
 local function Snapshot()
@@ -352,7 +341,6 @@ end
 
 local function SetReagent(on)
     db.reagent = on and true or false
-    baseIDs, keyringIDs = nil, nil
     if not db.reagent then
         -- Stop wanting it; leave it open or closed as it is now.
         for _, list in ipairs({ db.want, deferred or {} }) do

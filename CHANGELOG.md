@@ -1,5 +1,12 @@
 ﻿# Changelog
 
+## 1.12.0
+
+- The quest tracker has a **Sort** button on its header. Left-click sorts once in your chosen direction, even with automatic sorting off. Right-click untracks yellow, orange and red quests. Both are also available as `/espiutils quests sort`, `/espiutils quests keepeasy`, and the Sort now and Untrack non-green quests buttons on the Quest Tracker page. A manual sort says whether it sorted or was already in order.
+- Removing a spell from Mouseover Macros works in combat. Its macro is deleted once combat ends. Only macros in the exact format the addon writes are deleted, the same rule sync already uses, so a hand-edited `MO` macro is left alone.
+- Internal: Banner owns the preview check (`Banner.Preview`) and the combat flag (`Banner.InCombat`). It works out visibility once per event and passes it to its listeners, and it ignores mount changes unless "Hide while mounted" is on. Dismissing an alert redraws on the next frame, like pushing one. A shared tooltip helper is used throughout.
+- Internal: the food reminder skips its recheck after a bag update when its food is still there. Bag Rules finds swap sources in one pass instead of a search per slot, and trims its debug log in batches. The mouseover spell-name matcher skips fuzzy matching that can't succeed.
+
 ## 1.11.0
 
 - Bag Rules has a Quest Items group of its own. Drag it anywhere in the group order or untick it to sort quest items in Other (`/espiutils bags quest` toggles it). It replaces "Sort quest items with junk": if you had that on, Quest Items starts right after Junk.

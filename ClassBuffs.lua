@@ -48,7 +48,6 @@ local buffs -- this class's entries; nil when the class has none
 local timer
 local pending = false
 local rosterDirty = false
-local inCombat = false -- PLAYER_REGEN_DISABLED fires before InCombatLockdown() is true
 local trackedIds = {} -- spell IDs of this class's buffs
 
 -- Group ----------------------------------------------------------------------------
@@ -204,12 +203,13 @@ local function OnWhom(unit)
 end
 
 -- entry: the buff being shown, whose spell icon replaces the default one.
--- preview: ignore the hide options (the Preview button and /espiutils rebuff test).
+-- preview: ignore the hide options (the Preview button and /espiutils rebuff test); returns
+-- false when the preview is blocked.
 local function ShowReminder(message, entry, preview)
     local texture = entry and entry.iconId and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(entry.iconId)
-    EspiUtils.Banner.Push({
-        key = "rebuff", title = "Rebuff", text = message, icon = texture or DEFAULT_ICON, preview = preview,
-    })
+    local alert = { key = "rebuff", title = "Rebuff", text = message, icon = texture or DEFAULT_ICON }
+    if preview then return EspiUtils.Banner.Preview(alert) end
+    EspiUtils.Banner.Push(alert)
 end
 
 local function HideReminder()
@@ -231,7 +231,7 @@ local auraFrames = {}
 local auraMode
 
 local function TrackAuras()
-    local mode = settings.enabled and not inCombat and (IsInRaid and IsInRaid() and "raid" or "party") or nil
+    local mode = settings.enabled and not EspiUtils.Banner.InCombat() and (IsInRaid and IsInRaid() and "raid" or "party") or nil
     if mode == auraMode then return end
     auraMode = mode
     if mode == "raid" then events:RegisterEvent("UNIT_AURA") else events:UnregisterEvent("UNIT_AURA") end
@@ -286,10 +286,10 @@ local rebuffOptions = {
     previewNote = ", for classes with tracked buffs",
     statusExtra = function() return buffs and "" or " No buffs are tracked for this class." end,
     preview = function()
-        if not buffs then return false end
+        if not buffs or not ShowReminder("Preview", nil, true) then return false end
         CancelTimer()
-        ShowReminder("Preview", nil, true)
         timer = C_Timer.NewTimer(5, UpdateReminder)
+        return true
     end,
 }
 EspiUtils.Rebuff = EspiUtils.NewBuffReminderAPI(rebuffOptions)
@@ -344,15 +344,9 @@ end
 -- Rescan only when the banner's answer changed (combat, death, mounting with "Hide while
 -- mounted", ...) or on entering the world; aura, roster and resting events cover the rest.
 local couldShow
-EspiUtils.Banner.OnVisibilityChanged(function(event)
+EspiUtils.Banner.OnVisibilityChanged(function(event, canShow)
     if not buffs then return end
-    if event == "PLAYER_REGEN_DISABLED" then
-        inCombat = true
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        inCombat = false
-    end
     TrackAuras() -- nothing shows in combat, so auras aren't tracked then
-    local canShow = EspiUtils.Banner.CanShow()
     if event == "PLAYER_ENTERING_WORLD" or (canShow ~= couldShow and IsPlayerInWorld()) then
         couldShow = canShow
         UpdateReminder()
@@ -383,7 +377,6 @@ function EspiUtils.InitializeRebuff(store)
         auraFrames[i] = CreateFrame("Frame")
         auraFrames[i]:SetScript("OnEvent", OnAura)
     end
-    inCombat = InCombatLockdown()
     RebuildGroup()
     TrackSpells()
     WatchSpellData()

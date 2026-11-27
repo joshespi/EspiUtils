@@ -128,7 +128,7 @@ local function PrintHelp()
     Print("/espiutils <posture|water|standup> [on | off | status | interval <minutes> | test]")
     Print("/espiutils move [reset] - move and resize the alert banner (shared by all characters)")
     Print("/espiutils bags [sort | stop | preview | on | off | log | debug | probe | help] - help lists the group toggles")
-    Print("/espiutils quests [on | off | status | keepeasy | order [low | high]] - sort the quest tracker by level")
+    Print("/espiutils quests [on | off | status | sort | keepeasy | order [low | high]] - sort the quest tracker by level")
     Print("/espiutils keep [on | off | status | blocked | blocked clear]")
     Print("/espiutils mouseover [add | harm | del | list | sync] <spells>")
     Print("/espiutils boosh (or bewsh) " .. EspiUtils.Bewsh.Usage .. " - level-up notification")
@@ -203,10 +203,7 @@ function EspiUtils_OnCompartmentClick()
 end
 
 function EspiUtils_OnCompartmentEnter(_, button)
-    GameTooltip:SetOwner(button, "ANCHOR_LEFT")
-    GameTooltip:AddLine("Espi Utils")
-    GameTooltip:AddLine("Click to open the settings.", 0.7, 0.7, 0.7)
-    GameTooltip:Show()
+    EspiUtils.ShowTooltip(button, "ANCHOR_LEFT", "Espi Utils", { "Click to open the settings.", 0.7, 0.7, 0.7 })
 end
 
 function EspiUtils_OnCompartmentLeave()
