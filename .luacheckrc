@@ -13,7 +13,7 @@ read_globals = {
     "GetMacroIndexByName", "GetMacroInfo", "GetNumMacros", "GetServerTime", "GetTime", "GetUIPanel",
     "HideUIPanel", "InCombatLockdown", "InterfaceOptionsFrame_OpenToCategory",
     "InterfaceOptions_AddCategory", "IsAddOnLoaded", "IsBagOpen", "IsPlayerInWorld",
-    "IsResting", "IsShiftKeyDown", "OpenBag", "PlaySound", "ToggleGameMenu", "UnitClass",
+    "IsResting", "IsShiftKeyDown", "OpenAllBags", "OpenBag","PlaySound", "ToggleGameMenu", "UnitClass",
     "UnitClassBase", "UnitIsDeadOrGhost", "UnitName", "IsPlayerSpell", "IsSpellKnown",
     "IsInRaid", "IsInGroup", "IsInGuild", "SendChatMessage", "GetNumGroupMembers", "UnitExists", "UnitIsConnected",
     "UnitIsVisible", "UnitInRange", "UnitIsUnit", "UnitPowerType", "date", "geterrorhandler",
