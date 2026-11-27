@@ -315,13 +315,12 @@ end
 local function AddBagOrder(panel, bags)
     local rowHeight, headerHeight, groupGap, listWidth = 23, 24, 5, 330
     local sides = bags.Sides
-    local scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 16, panel.y)
-    scroll:SetPoint("BOTTOMLEFT", 16, 16)
-    scroll:SetWidth(listWidth)
-    local content = CreateFrame("Frame", nil, scroll)
+    -- The page itself scrolls, so the list sits on it at full height and grows the page
+    -- through panel.bottom. pageScroll is the page's scroll frame, for scrolling while dragging.
+    local pageScroll, listTop = panel:GetParent(), panel.y
+    local content = CreateFrame("Frame", nil, panel)
+    content:SetPoint("TOPLEFT", 16, listTop)
     content:SetSize(listWidth, 1)
-    scroll:SetScrollChild(content)
 
     local marker = content:CreateTexture(nil, "OVERLAY")
     marker:SetSize(listWidth, 2)
@@ -331,27 +330,30 @@ local function AddBagOrder(panel, bags)
     local rows, groups = {}, {}
     local dragged
 
-    -- cursor position in UI units, plus the list's top and bottom edges
-    local function CursorPosition()
+    -- cursor position in UI units, plus frame's top and bottom edges
+    local function CursorPosition(frame)
         local x, y = GetCursorPosition()
-        local scale = scroll:GetEffectiveScale()
-        local top, bottom = scroll:GetTop(), scroll:GetBottom()
+        local scale = frame:GetEffectiveScale()
+        local top, bottom = frame:GetTop(), frame:GetBottom()
         if not (top and bottom) then return end
         return x / scale, y / scale, top, bottom
     end
 
+    -- the cursor's height and the list's top, while the cursor is over the visible part of the list
     local function CursorInList()
-        local x, y, top, bottom = CursorPosition()
+        local x, y, top, bottom = CursorPosition(content)
         if not x then return end
-        local left, right = scroll:GetLeft(), scroll:GetRight()
+        local left, right = content:GetLeft(), content:GetRight()
         if x < left or x > right or y < bottom or y > top then return end
+        local _, _, viewTop, viewBottom = CursorPosition(pageScroll)
+        if not viewTop or y < viewBottom or y > viewTop then return end
         return y, top
     end
 
     local function DropTarget()
         local y, top = CursorInList()
         if not y then return end
-        local offset = top - y + scroll:GetVerticalScroll()
+        local offset = top - y
         local order = bags.GetSettings().order
         for position, side in ipairs(sides) do
             local group = groups[side]
@@ -375,7 +377,7 @@ local function AddBagOrder(panel, bags)
         if dragged then dragged:SetAlpha(1) end
         dragged = nil
         marker:Hide()
-        scroll:SetScript("OnUpdate", nil)
+        content:SetScript("OnUpdate", nil)
     end
 
     local function Refresh()
@@ -402,16 +404,18 @@ local function AddBagOrder(panel, bags)
             offset = offset + groupGap
         end
         content:SetHeight(offset)
+        panel.bottom = listTop - offset
+        panel.FitHeight()
     end
 
     local function UpdateDrag(_, elapsed)
-        local _, y, top, bottom = CursorPosition()
-        if y then -- scrolls while the cursor is at or past the list's top or bottom edge
-            local offset = scroll:GetVerticalScroll()
+        local _, y, top, bottom = CursorPosition(pageScroll)
+        if y then -- scrolls the page while the cursor is at or past its top or bottom edge
+            local offset = pageScroll:GetVerticalScroll()
             if y > top - 14 then
-                scroll:SetVerticalScroll(math.max(0, offset - elapsed * 160))
+                pageScroll:SetVerticalScroll(math.max(0, offset - elapsed * 160))
             elseif y < bottom + 14 then
-                scroll:SetVerticalScroll(math.min(scroll:GetVerticalScrollRange(), offset + elapsed * 160))
+                pageScroll:SetVerticalScroll(math.min(pageScroll:GetVerticalScrollRange(), offset + elapsed * 160))
             end
         end
         local side, _, line = DropTarget()
@@ -455,8 +459,8 @@ local function AddBagOrder(panel, bags)
         row:SetScript("OnDragStart", function(self)
             dragged = self
             self:SetAlpha(0.5)
-            scroll:SetScript("OnUpdate", UpdateDrag)
-            UpdateDrag(scroll, 0)
+            content:SetScript("OnUpdate", UpdateDrag)
+            UpdateDrag(content, 0)
         end)
         row:SetScript("OnDragStop", function(self)
             if dragged ~= self then return end
@@ -483,7 +487,7 @@ local function BuildBags()
         { "debug", "Debug output", "Per-pass detail in chat and the log." },
     })
     AddButtons(panel, {
-        { label = "Sort now", tip = "Open your bags first so their layout is used.", onClick = bags.Sort },
+        { label = "Sort now", tip = "Opens your bags if needed, so their layout is used.",onClick = bags.Sort },
         { label = "Preview", tip = "Counts per section in chat; moves nothing.", onClick = bags.Preview },
     })
     AddDefaults(panel, bags.ResetDefaults)

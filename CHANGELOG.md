@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.12.2
+
+- The Bag Rules group list (Top and Bottom groups) shows again. Since 1.10.0 it was squeezed to nothing under the buttons. It is now part of the page's own scrolling.
+
 ## 1.12.1
 
 - Bag Rules "Sort now", "Preview" and `/espiutils bags sort | preview` open your combined bags if they're closed, instead of stopping with "open your bags first".
